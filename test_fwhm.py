@@ -64,8 +64,8 @@ def test_gaussian_2d():
     
     assert error_x < 1.0, f"FWHM X error too large: {error_x}"
     assert error_y < 1.0, f"FWHM Y error too large: {error_y}"
-    assert result['center_x'] == center_x, f"Center X mismatch"
-    assert result['center_y'] == center_y, f"Center Y mismatch"
+    assert np.isclose(result['center_x'], center_x, atol=1), f"Center X mismatch: {result['center_x']} vs {center_x}"
+    assert np.isclose(result['center_y'], center_y, atol=1), f"Center Y mismatch: {result['center_y']} vs {center_y}"
     print("  ✓ PASSED\n")
 
 

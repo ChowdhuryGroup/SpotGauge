@@ -49,7 +49,7 @@ def calculate_fwhm_1d(profile):
         right_idx += 1
     
     # Interpolate for more accurate position
-    if right_idx < len(profile) and profile[right_idx] != profile[right_idx - 1]:
+    if 0 < right_idx < len(profile) and profile[right_idx] != profile[right_idx - 1]:
         right_pos = right_idx - 1 + (half_max - profile[right_idx - 1]) / (profile[right_idx] - profile[right_idx - 1])
     else:
         right_pos = right_idx
