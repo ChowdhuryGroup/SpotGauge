@@ -504,10 +504,11 @@
                 </div>
                 
                 <div class="input-group">
-                    <label for="energyOrPower">Energy/Power Mode:</label>
+                    <label for="energyOrPower">Calculation Mode:</label>
                     <select id="energyOrPower" onchange="toggleEnergyPowerInputs()">
-                        <option value="energy">Pulse Energy</option>
-                        <option value="power">Average Power</option>
+                        <option value="energy">From Pulse Energy</option>
+                        <option value="power">From Average Power</option>
+                        <option value="fluence">From Peak Fluence</option>
                     </select>
                 </div>
                 
@@ -521,6 +522,12 @@
                     <label for="avgPower">Average Power (W):</label>
                     <input type="number" id="avgPower" placeholder="e.g., 0.001" min="0" step="any">
                     <small>Average laser power in Watts (e.g., 0.001 for 1 mW)</small>
+                </div>
+                
+                <div class="input-group" id="fluenceGroup" style="display: none;">
+                    <label for="inputFluence">Peak Fluence (J/cm²):</label>
+                    <input type="number" id="inputFluence" placeholder="e.g., 0.5" min="0" step="any">
+                    <small>Desired peak fluence to calculate required pulse energy</small>
                 </div>
                 
                 <button class="btn" id="calculateBtn" onclick="calculateLaserParams()">Calculate Parameters</button>
@@ -619,13 +626,20 @@
             const mode = document.getElementById('energyOrPower').value;
             const energyGroup = document.getElementById('pulseEnergyGroup');
             const powerGroup = document.getElementById('avgPowerGroup');
+            const fluenceGroup = document.getElementById('fluenceGroup');
             
             if (mode === 'energy') {
                 energyGroup.style.display = 'block';
                 powerGroup.style.display = 'none';
-            } else {
+                fluenceGroup.style.display = 'none';
+            } else if (mode === 'power') {
                 energyGroup.style.display = 'none';
                 powerGroup.style.display = 'block';
+                fluenceGroup.style.display = 'none';
+            } else if (mode === 'fluence') {
+                energyGroup.style.display = 'none';
+                powerGroup.style.display = 'none';
+                fluenceGroup.style.display = 'block';
             }
         }
         
@@ -760,7 +774,7 @@
                     errorDiv.style.display = 'block';
                     return;
                 }
-            } else {
+            } else if (mode === 'power') {
                 const avgPower = parseFloat(document.getElementById('avgPower').value);
                 if (!avgPower || avgPower <= 0) {
                     errorDiv.textContent = 'Please enter a valid average power.';
@@ -768,6 +782,21 @@
                     return;
                 }
                 pulseEnergy = avgPower / repRate;
+            } else if (mode === 'fluence') {
+                // Backwards calculation: Calculate pulse energy from desired fluence
+                const inputFluence = parseFloat(document.getElementById('inputFluence').value);
+                if (!inputFluence || inputFluence <= 0) {
+                    errorDiv.textContent = 'Please enter a valid peak fluence.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                // Calculate spot area first (need spot size to be known)
+                const spotAreaMicron2 = Math.PI * w0XMicron * w0YMicron;
+                const spotAreaCm2 = spotAreaMicron2 * 1e-8;  // Convert µm² to cm²
+                
+                // Backwards: E_pulse = F_peak * A
+                pulseEnergy = inputFluence * spotAreaCm2;
             }
             
             // Calculate spot area at 1/e² using corrected formula

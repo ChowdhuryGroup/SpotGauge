@@ -19,7 +19,8 @@ Visit the live application: [SpotGauge FWHM Calculator](https://chowdhurygroup.g
 - **Peak fluence** - Calculate energy density at the focal spot (J/cm²)
 - **Peak intensity** - Calculate peak power density with Gaussian profile correction (W/cm²)
 - **Peak power** - Calculate instantaneous power (W)
-- **Flexible input modes** - Enter either pulse energy or average power
+- **Flexible input modes** - Enter pulse energy, average power, or desired fluence
+- **Backwards calculation** - Calculate required pulse energy from target fluence
 - **Manual spot size input** - Enter FWHM or 1/e² radius directly without image analysis
 - **Corrected area calculation** - Uses proper FWHM to 1/e² conversion for Gaussian beams
 - **Unit conversions** - Automatic SI prefix formatting for readability

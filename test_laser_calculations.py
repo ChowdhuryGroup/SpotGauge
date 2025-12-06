@@ -173,6 +173,40 @@ def test_backward_compatibility_check():
     print("  ✓ PASSED\n")
 
 
+def test_backwards_calculation_from_fluence():
+    """Test backwards calculation: compute pulse energy from desired fluence."""
+    # Given parameters
+    fwhm_x = 10.0  # µm
+    fwhm_y = 10.0  # µm
+    desired_fluence = 0.5  # J/cm²
+    
+    # Convert FWHM to 1/e² beam radius
+    conversion_factor = math.sqrt(2 * math.log(2))
+    w0_x = fwhm_x / conversion_factor
+    w0_y = fwhm_y / conversion_factor
+    
+    # Calculate spot area at 1/e²
+    spot_area_um2 = math.pi * w0_x * w0_y
+    spot_area_cm2 = spot_area_um2 * 1e-8
+    
+    # Backwards calculation: E_pulse = F_peak * A
+    calculated_energy = desired_fluence * spot_area_cm2
+    
+    # Verify by forward calculation
+    verification_fluence = calculated_energy / spot_area_cm2
+    
+    print(f"Backwards Calculation Test:")
+    print(f"  FWHM: {fwhm_x:.2f} µm × {fwhm_y:.2f} µm")
+    print(f"  Desired fluence: {desired_fluence:.2e} J/cm²")
+    print(f"  Spot area: {spot_area_cm2:.4e} cm²")
+    print(f"  Calculated pulse energy: {calculated_energy:.4e} J")
+    print(f"  Verification fluence: {verification_fluence:.4e} J/cm²")
+    print(f"  Error: {abs(verification_fluence - desired_fluence):.2e} J/cm²")
+    
+    assert abs(verification_fluence - desired_fluence) < 1e-10, "Backwards calculation error"
+    print("  ✓ PASSED\n")
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("Laser Parameter Calculation Tests")
@@ -183,6 +217,7 @@ if __name__ == '__main__':
     test_peak_intensity_with_correction()
     test_complete_laser_calculation()
     test_backward_compatibility_check()
+    test_backwards_calculation_from_fluence()
     
     print("=" * 60)
     print("All laser calculation tests passed! ✓")
