@@ -8,6 +8,58 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 
+def calculate_width_at_threshold(profile, threshold_fraction):
+    """
+    Calculate the width of a 1D intensity profile at a given threshold fraction.
+    
+    Parameters
+    ----------
+    profile : array-like
+        1D array of intensity values
+    threshold_fraction : float
+        The fraction of maximum intensity to measure width at (e.g., 0.5 for FWHM)
+        
+    Returns
+    -------
+    float
+        The width in pixels at the specified threshold
+    """
+    profile = np.asarray(profile, dtype=float)
+    
+    # Find the maximum value and its position
+    max_val = np.max(profile)
+    max_idx = np.argmax(profile)
+    
+    # Calculate threshold value
+    threshold = max_val * threshold_fraction
+    
+    # Find the indices where the profile crosses threshold
+    # Left side
+    left_idx = max_idx
+    while left_idx > 0 and profile[left_idx] > threshold:
+        left_idx -= 1
+    
+    # Interpolate for more accurate position
+    if left_idx > 0 and profile[left_idx] != profile[left_idx + 1]:
+        left_pos = left_idx + (threshold - profile[left_idx]) / (profile[left_idx + 1] - profile[left_idx])
+    else:
+        left_pos = left_idx
+    
+    # Right side
+    right_idx = max_idx
+    while right_idx < len(profile) - 1 and profile[right_idx] > threshold:
+        right_idx += 1
+    
+    # Interpolate for more accurate position
+    if 0 < right_idx < len(profile) and profile[right_idx] != profile[right_idx - 1]:
+        right_pos = right_idx - 1 + (threshold - profile[right_idx - 1]) / (profile[right_idx] - profile[right_idx - 1])
+    else:
+        right_pos = right_idx
+    
+    width = right_pos - left_pos
+    return width
+
+
 def calculate_fwhm_1d(profile):
     """
     Calculate the FWHM of a 1D intensity profile.
@@ -22,40 +74,7 @@ def calculate_fwhm_1d(profile):
     float
         The FWHM in pixels
     """
-    profile = np.asarray(profile, dtype=float)
-    
-    # Find the maximum value and its position
-    max_val = np.max(profile)
-    max_idx = np.argmax(profile)
-    
-    # Calculate half maximum
-    half_max = max_val / 2.0
-    
-    # Find the indices where the profile crosses half maximum
-    # Left side
-    left_idx = max_idx
-    while left_idx > 0 and profile[left_idx] > half_max:
-        left_idx -= 1
-    
-    # Interpolate for more accurate position
-    if left_idx > 0 and profile[left_idx] != profile[left_idx + 1]:
-        left_pos = left_idx + (half_max - profile[left_idx]) / (profile[left_idx + 1] - profile[left_idx])
-    else:
-        left_pos = left_idx
-    
-    # Right side
-    right_idx = max_idx
-    while right_idx < len(profile) - 1 and profile[right_idx] > half_max:
-        right_idx += 1
-    
-    # Interpolate for more accurate position
-    if 0 < right_idx < len(profile) and profile[right_idx] != profile[right_idx - 1]:
-        right_pos = right_idx - 1 + (half_max - profile[right_idx - 1]) / (profile[right_idx] - profile[right_idx - 1])
-    else:
-        right_pos = right_idx
-    
-    fwhm = right_pos - left_pos
-    return fwhm
+    return calculate_width_at_threshold(profile, 0.5)
 
 
 def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
@@ -114,9 +133,19 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
     fwhm_x = calculate_fwhm_1d(profile_x)
     fwhm_y = calculate_fwhm_1d(profile_y)
     
+    # Calculate 1/e^2 width (threshold at 1/e^2 ≈ 0.1353 of maximum)
+    # The 1/e^2 radius is half of the 1/e^2 width (diameter)
+    e2_threshold = 1.0 / (np.e ** 2)  # ≈ 0.1353
+    width_e2_x = calculate_width_at_threshold(profile_x, e2_threshold)
+    width_e2_y = calculate_width_at_threshold(profile_y, e2_threshold)
+    radius_e2_x = width_e2_x / 2.0
+    radius_e2_y = width_e2_y / 2.0
+    
     return {
         'fwhm_x': fwhm_x,
         'fwhm_y': fwhm_y,
+        'radius_e2_x': radius_e2_x,
+        'radius_e2_y': radius_e2_y,
         'center_x': center_x,
         'center_y': center_y,
         'profile_x': profile_x.tolist(),

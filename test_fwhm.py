@@ -255,6 +255,36 @@ def test_background_dimension_mismatch():
     print("  ✓ PASSED\n")
 
 
+def test_radius_e2():
+    """Test 1/e^2 radius calculation on a 2D Gaussian with known parameters."""
+    # For a Gaussian exp(-x^2/(2*sigma^2)), intensity = 1/e^2 when:
+    # exp(-x^2/(2*sigma^2)) = exp(-2) → x^2 = 4*sigma^2 → x = 2*sigma
+    # So the 1/e^2 radius = 2*sigma
+    sigma_x = 15.0
+    sigma_y = 10.0
+    expected_radius_e2_x = 2 * sigma_x  # = 30
+    expected_radius_e2_y = 2 * sigma_y  # = 20
+    
+    y, x = np.mgrid[0:100, 0:100]
+    center_x, center_y = 50, 50
+    gaussian_2d = np.exp(-((x - center_x) ** 2) / (2 * sigma_x ** 2) 
+                        - ((y - center_y) ** 2) / (2 * sigma_y ** 2))
+    
+    # Test without smoothing (sigma=0) since input is already smooth
+    result = calculate_fwhm_2d(gaussian_2d, smooth_sigma=0)
+    
+    error_x = abs(result['radius_e2_x'] - expected_radius_e2_x)
+    error_y = abs(result['radius_e2_y'] - expected_radius_e2_y)
+    
+    print(f"1/e^2 Radius test:")
+    print(f"  Expected 1/e^2 Radius X: {expected_radius_e2_x:.2f}, Calculated: {result['radius_e2_x']:.2f}, Error: {error_x:.2f}")
+    print(f"  Expected 1/e^2 Radius Y: {expected_radius_e2_y:.2f}, Calculated: {result['radius_e2_y']:.2f}, Error: {error_y:.2f}")
+    
+    assert error_x < 1.0, f"1/e^2 Radius X error too large: {error_x}"
+    assert error_y < 1.0, f"1/e^2 Radius Y error too large: {error_y}"
+    print("  ✓ PASSED\n")
+
+
 if __name__ == '__main__':
     print("=" * 50)
     print("FWHM Calculator Tests")
@@ -262,6 +292,7 @@ if __name__ == '__main__':
     
     test_gaussian_1d()
     test_gaussian_2d()
+    test_radius_e2()
     test_process_rgb_image()
     test_process_rgba_image()
     test_noisy_gaussian()

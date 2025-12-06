@@ -260,6 +260,20 @@
                 
                 <label for="pixelPerMicron" style="margin-top: 15px;">Pixel per Micron (optional):</label>
                 <input type="number" id="pixelPerMicron" placeholder="e.g., 10.5" min="0" step="0.1">
+                
+                <div class="checkbox-group" style="margin-top: 15px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="showScaleBar">
+                        Show scale bar on cropped image
+                    </label>
+                </div>
+                
+                <div class="checkbox-group" style="margin-top: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="showVerticalLineout">
+                        Show vertical lineout on cropped image
+                    </label>
+                </div>
             </div>
             
             <div class="background-section">
@@ -304,6 +318,22 @@
                 <div class="result-item" id="fwhmYMicronRow" style="display: none;">
                     <span class="result-label">FWHM Y (µm):</span>
                     <span class="result-value" id="fwhmYMicron">-</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">1/e² Radius X:</span>
+                    <span class="result-value" id="radiusE2X">-</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">1/e² Radius Y:</span>
+                    <span class="result-value" id="radiusE2Y">-</span>
+                </div>
+                <div class="result-item" id="radiusE2XMicronRow" style="display: none;">
+                    <span class="result-label">1/e² Radius X (µm):</span>
+                    <span class="result-value" id="radiusE2XMicron">-</span>
+                </div>
+                <div class="result-item" id="radiusE2YMicronRow" style="display: none;">
+                    <span class="result-label">1/e² Radius Y (µm):</span>
+                    <span class="result-value" id="radiusE2YMicron">-</span>
                 </div>
                 <div class="result-item">
                     <span class="result-label">Peak X:</span>
@@ -604,6 +634,8 @@ result
                 // Get results
                 const fwhmX = result.get('fwhm_x');
                 const fwhmY = result.get('fwhm_y');
+                const radiusE2X = result.get('radius_e2_x');
+                const radiusE2Y = result.get('radius_e2_y');
                 const centerX = result.get('center_x');
                 const centerY = result.get('center_y');
                 const profileX = result.get('profile_x').toJs();
@@ -612,28 +644,40 @@ result
                 const cropBounds = result.get('crop_bounds');
                 
                 // Store analysis result for lineout visualization
-                lastAnalysisResult = { centerX, centerY, fwhmX, fwhmY };
+                lastAnalysisResult = { centerX, centerY, fwhmX, fwhmY, radiusE2X, radiusE2Y, cropBounds };
                 
                 // Display results in pixels
                 document.getElementById('fwhmX').textContent = fwhmX.toFixed(2) + ' px';
                 document.getElementById('fwhmY').textContent = fwhmY.toFixed(2) + ' px';
+                document.getElementById('radiusE2X').textContent = radiusE2X.toFixed(2) + ' px';
+                document.getElementById('radiusE2Y').textContent = radiusE2Y.toFixed(2) + ' px';
                 document.getElementById('centerX').textContent = centerX + ' px';
                 document.getElementById('centerY').textContent = centerY + ' px';
                 
                 // Display results in microns if scale is provided
                 const fwhmXMicronRow = document.getElementById('fwhmXMicronRow');
                 const fwhmYMicronRow = document.getElementById('fwhmYMicronRow');
+                const radiusE2XMicronRow = document.getElementById('radiusE2XMicronRow');
+                const radiusE2YMicronRow = document.getElementById('radiusE2YMicronRow');
                 
                 if (pixelPerMicron > 0) {
                     const fwhmXMicron = fwhmX / pixelPerMicron;
                     const fwhmYMicron = fwhmY / pixelPerMicron;
+                    const radiusE2XMicron = radiusE2X / pixelPerMicron;
+                    const radiusE2YMicron = radiusE2Y / pixelPerMicron;
                     document.getElementById('fwhmXMicron').textContent = fwhmXMicron.toFixed(2) + ' µm';
                     document.getElementById('fwhmYMicron').textContent = fwhmYMicron.toFixed(2) + ' µm';
+                    document.getElementById('radiusE2XMicron').textContent = radiusE2XMicron.toFixed(2) + ' µm';
+                    document.getElementById('radiusE2YMicron').textContent = radiusE2YMicron.toFixed(2) + ' µm';
                     fwhmXMicronRow.style.display = 'flex';
                     fwhmYMicronRow.style.display = 'flex';
+                    radiusE2XMicronRow.style.display = 'flex';
+                    radiusE2YMicronRow.style.display = 'flex';
                 } else {
                     fwhmXMicronRow.style.display = 'none';
                     fwhmYMicronRow.style.display = 'none';
+                    radiusE2XMicronRow.style.display = 'none';
+                    radiusE2YMicronRow.style.display = 'none';
                 }
                 
                 results.style.display = 'block';
@@ -641,8 +685,19 @@ result
                 // Update lineout visualization on the image
                 updateLineoutVisualization();
                 
-                // Display cropped focal spot with jet colormap
-                displayCroppedFocalSpot(croppedJet);
+                // Get checkbox options
+                const showScaleBar = document.getElementById('showScaleBar').checked;
+                const showVerticalLineout = document.getElementById('showVerticalLineout').checked;
+                
+                // Display cropped focal spot with jet colormap and options
+                displayCroppedFocalSpot(croppedJet, {
+                    showScaleBar,
+                    showVerticalLineout,
+                    pixelPerMicron,
+                    cropBounds,
+                    centerX,
+                    centerY
+                });
                 
                 // Draw charts
                 drawChart('chartX', 'chartContainerX', profileX, fwhmX, centerX, 'X Profile');
@@ -656,7 +711,7 @@ result
             }
         });
         
-        function displayCroppedFocalSpot(croppedJet) {
+        function displayCroppedFocalSpot(croppedJet, options = {}) {
             const container = document.getElementById('croppedFocalSpot');
             const canvas = document.getElementById('croppedCanvas');
             container.style.display = 'block';
@@ -681,6 +736,56 @@ result
             }
             
             ctx.putImageData(imgData, 0, 0);
+            
+            // Draw vertical lineout if enabled
+            if (options.showVerticalLineout && options.cropBounds) {
+                const cropBounds = options.cropBounds;
+                const cropCenterX = options.centerX - cropBounds.get('x_start');
+                
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cropCenterX, 0);
+                ctx.lineTo(cropCenterX, height);
+                ctx.stroke();
+            }
+            
+            // Draw scale bar if enabled
+            if (options.showScaleBar && options.pixelPerMicron > 0) {
+                const pixelPerMicron = options.pixelPerMicron;
+                
+                // Calculate a nice round number for scale bar length in microns
+                // Aim for ~20% of image width
+                const targetLengthPx = width * 0.2;
+                const targetLengthMicron = targetLengthPx / pixelPerMicron;
+                
+                // Round to nice values: 1, 2, 5, 10, 20, 50, 100, etc.
+                const niceValues = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+                let scaleBarMicron = niceValues[0];
+                for (const v of niceValues) {
+                    if (v <= targetLengthMicron * 1.5) {
+                        scaleBarMicron = v;
+                    }
+                }
+                
+                const scaleBarPx = scaleBarMicron * pixelPerMicron;
+                
+                // Position in lower right corner with some padding
+                const padding = 10;
+                const barHeight = 5;
+                const x = width - padding - scaleBarPx;
+                const y = height - padding - barHeight;
+                
+                // Draw white scale bar
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x, y, scaleBarPx, barHeight);
+                
+                // Draw scale bar label
+                ctx.font = '12px Arial';
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.fillText(scaleBarMicron + ' µm', x + scaleBarPx / 2, y - 5);
+            }
         }
 
         function drawChart(canvasId, containerId, profile, fwhm, center, title) {
