@@ -677,7 +677,8 @@
             
             // Calculate spot area using FWHM dimensions
             // For an elliptical spot: Area = π * (FWHM_x/2) * (FWHM_y/2)
-            // This is the area of the ellipse defined by the FWHM dimensions
+            // This calculates the area of an ellipse with semi-axes equal to FWHM/2.
+            // For a Gaussian beam, this is an approximation of the effective area at FWHM intensity.
             const spotAreaMicron2 = Math.PI * (fwhmXMicron / 2) * (fwhmYMicron / 2);
             const spotAreaCm2 = spotAreaMicron2 * 1e-8;  // Convert µm² to cm²
             
@@ -703,6 +704,9 @@
         }
         
         // Format numbers with SI prefixes
+        // Returns a number formatted with an appropriate SI prefix (T, G, M, k, m, µ, n, p, f)
+        // to make the value fall in the range [1, 1000). Falls back to exponential notation
+        // for values outside the supported range.
         function formatSI(value, unit) {
             if (value === 0) {
                 return `0 ${unit}`;
@@ -727,13 +731,13 @@
                 const scaledValue = value / p.factor;
                 const absScaledValue = Math.abs(scaledValue);
                 
-                // Check if this prefix gives us a value in the range [1, 1000)
+                // Use this prefix if it gives us a value in [1, 1000)
                 if (absScaledValue >= 1 && absScaledValue < 1000) {
                     return `${scaledValue.toFixed(3)} ${p.prefix}${unit}`;
                 }
             }
             
-            // Fallback to exponential notation if no suitable prefix found
+            // Values outside the supported SI prefix range use exponential notation
             return value.toExponential(3) + ' ' + unit;
         }
 
