@@ -879,6 +879,9 @@ result
         // Download cropped image button
         document.getElementById('downloadCroppedBtn').addEventListener('click', () => {
             const canvas = document.getElementById('croppedCanvas');
+            if (canvas.width === 0 || canvas.height === 0) {
+                return; // No image to download
+            }
             const link = document.createElement('a');
             link.download = 'cropped_focal_spot.png';
             link.href = canvas.toDataURL('image/png');
