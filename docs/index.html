@@ -675,8 +675,9 @@
             const fwhmXMicron = lastAnalysisResult.fwhmX / pixelPerMicron;
             const fwhmYMicron = lastAnalysisResult.fwhmY / pixelPerMicron;
             
-            // Calculate spot area (assuming elliptical Gaussian spot)
-            // Area = π * (FWHM_x/2) * (FWHM_y/2)
+            // Calculate spot area using FWHM dimensions
+            // For an elliptical spot: Area = π * (FWHM_x/2) * (FWHM_y/2)
+            // This is the area of the ellipse defined by the FWHM dimensions
             const spotAreaMicron2 = Math.PI * (fwhmXMicron / 2) * (fwhmYMicron / 2);
             const spotAreaCm2 = spotAreaMicron2 * 1e-8;  // Convert µm² to cm²
             
@@ -703,6 +704,10 @@
         
         // Format numbers with SI prefixes
         function formatSI(value, unit) {
+            if (value === 0) {
+                return `0 ${unit}`;
+            }
+            
             const prefixes = [
                 { prefix: 'T', factor: 1e12 },
                 { prefix: 'G', factor: 1e9 },
@@ -716,15 +721,19 @@
                 { prefix: 'f', factor: 1e-15 }
             ];
             
+            const absValue = Math.abs(value);
+            
             for (const p of prefixes) {
-                if (Math.abs(value) >= p.factor) {
-                    const scaledValue = value / p.factor;
-                    if (scaledValue >= 1 && scaledValue < 1000) {
-                        return `${scaledValue.toFixed(3)} ${p.prefix}${unit}`;
-                    }
+                const scaledValue = value / p.factor;
+                const absScaledValue = Math.abs(scaledValue);
+                
+                // Check if this prefix gives us a value in the range [1, 1000)
+                if (absScaledValue >= 1 && absScaledValue < 1000) {
+                    return `${scaledValue.toFixed(3)} ${p.prefix}${unit}`;
                 }
             }
             
+            // Fallback to exponential notation if no suitable prefix found
             return value.toExponential(3) + ' ' + unit;
         }
 
