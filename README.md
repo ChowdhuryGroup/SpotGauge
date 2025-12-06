@@ -17,9 +17,11 @@ Visit the live application: [SpotGauge FWHM Calculator](https://chowdhurygroup.g
 
 ### Laser Calculations
 - **Peak fluence** - Calculate energy density at the focal spot (J/cm²)
-- **Peak intensity** - Calculate peak power density (W/cm²)
+- **Peak intensity** - Calculate peak power density with Gaussian profile correction (W/cm²)
 - **Peak power** - Calculate instantaneous power (W)
 - **Flexible input modes** - Enter either pulse energy or average power
+- **Manual spot size input** - Enter FWHM or 1/e² radius directly without image analysis
+- **Corrected area calculation** - Uses proper FWHM to 1/e² conversion for Gaussian beams
 - **Unit conversions** - Automatic SI prefix formatting for readability
 
 ### General
@@ -35,7 +37,7 @@ Visit the live application: [SpotGauge FWHM Calculator](https://chowdhurygroup.g
 4. **Results** - View FWHM values, 1/e² radius, and intensity profiles
 
 ### Laser Calculations Tab
-1. **Run FWHM Analysis** - First analyze your focal spot in the FWHM Analysis tab
+1. **Choose Spot Size Input** - Select from FWHM analysis results, manual FWHM input, or manual 1/e² radius input
 2. **Enter Parameters** - Input repetition rate, pulse duration, and either pulse energy or average power
 3. **Calculate** - Click "Calculate Parameters" to compute laser characteristics
 4. **Results** - View peak fluence, peak intensity, peak power, and other derived parameters
@@ -55,20 +57,26 @@ The FWHM (Full Width at Half Maximum) is calculated by:
 
 ### Laser Parameter Calculations
 
-Based on the measured FWHM, the following parameters are calculated:
+Based on the measured FWHM or 1/e² radius, the following parameters are calculated:
 
-- **Spot Area**: A = π × (FWHM_x/2) × (FWHM_y/2) for elliptical spots
+For a Gaussian beam, the relationship between FWHM and 1/e² beam radius (w₀) is:
+- **FWHM to 1/e² conversion**: w₀ = FWHM / √(2ln2) ≈ FWHM / 1.177
+
+Using the 1/e² beam radius:
+- **Spot Area**: A = π × w₀_x × w₀_y (area at 1/e² intensity level)
 - **Pulse Energy**: E_pulse = P_avg / f_rep (if using average power mode)
 - **Peak Power**: P_peak = E_pulse / τ_pulse
 - **Average Power**: P_avg = E_pulse × f_rep
 - **Peak Fluence**: F_peak = E_pulse / A (J/cm²)
-- **Peak Intensity**: I_peak = P_peak / A (W/cm²)
+- **Peak Intensity**: I_peak = 0.94 × P_peak / A (W/cm²)
+  - The 0.94 factor accounts for the Gaussian beam profile
 
 Where:
 - f_rep = repetition rate (Hz)
 - τ_pulse = pulse duration (s)
 - E_pulse = pulse energy (J)
 - P_avg = average power (W)
+- w₀_x, w₀_y = 1/e² beam radii in X and Y directions
 
 ## 🛠️ Local Development
 

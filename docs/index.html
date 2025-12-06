@@ -457,6 +457,41 @@
                 </p>
                 
                 <div class="input-group">
+                    <label>Spot Size Input Mode:</label>
+                    <select id="spotSizeMode" onchange="toggleSpotSizeInputs()">
+                        <option value="from_analysis">From FWHM Analysis</option>
+                        <option value="manual_fwhm">Manual FWHM Input</option>
+                        <option value="manual_1e2">Manual 1/e² Radius Input</option>
+                    </select>
+                </div>
+                
+                <div id="manualFwhmGroup" style="display: none;">
+                    <div class="input-group">
+                        <label for="manualFwhmX">FWHM X (µm):</label>
+                        <input type="number" id="manualFwhmX" placeholder="e.g., 10.5" min="0" step="any">
+                        <small>Full width at half maximum in X direction</small>
+                    </div>
+                    <div class="input-group">
+                        <label for="manualFwhmY">FWHM Y (µm):</label>
+                        <input type="number" id="manualFwhmY" placeholder="e.g., 10.5" min="0" step="any">
+                        <small>Full width at half maximum in Y direction</small>
+                    </div>
+                </div>
+                
+                <div id="manual1e2Group" style="display: none;">
+                    <div class="input-group">
+                        <label for="manual1e2RadiusX">1/e² Radius X (µm):</label>
+                        <input type="number" id="manual1e2RadiusX" placeholder="e.g., 7.5" min="0" step="any">
+                        <small>Beam radius at 1/e² intensity in X direction</small>
+                    </div>
+                    <div class="input-group">
+                        <label for="manual1e2RadiusY">1/e² Radius Y (µm):</label>
+                        <input type="number" id="manual1e2RadiusY" placeholder="e.g., 7.5" min="0" step="any">
+                        <small>Beam radius at 1/e² intensity in Y direction</small>
+                    </div>
+                </div>
+                
+                <div class="input-group">
                     <label for="repRate">Repetition Rate (Hz):</label>
                     <input type="number" id="repRate" placeholder="e.g., 1000" min="0" step="0.1">
                     <small>Laser pulse repetition rate in Hertz</small>
@@ -594,6 +629,24 @@
             }
         }
         
+        // Toggle between spot size input modes
+        function toggleSpotSizeInputs() {
+            const mode = document.getElementById('spotSizeMode').value;
+            const manualFwhmGroup = document.getElementById('manualFwhmGroup');
+            const manual1e2Group = document.getElementById('manual1e2Group');
+            
+            if (mode === 'manual_fwhm') {
+                manualFwhmGroup.style.display = 'block';
+                manual1e2Group.style.display = 'none';
+            } else if (mode === 'manual_1e2') {
+                manualFwhmGroup.style.display = 'none';
+                manual1e2Group.style.display = 'block';
+            } else {
+                manualFwhmGroup.style.display = 'none';
+                manual1e2Group.style.display = 'none';
+            }
+        }
+        
         // Update calculations tab with FWHM results
         function updateCalculationsTabFromResults() {
             if (!lastAnalysisResult) {
@@ -613,6 +666,9 @@
                 document.getElementById('calcFwhmX').textContent = `${fwhmX.toFixed(2)} px`;
                 document.getElementById('calcFwhmY').textContent = `${fwhmY.toFixed(2)} px`;
             }
+            
+            // Hide spot area until calculation is run
+            document.getElementById('calcSpotAreaRow').style.display = 'none';
         }
         
         // Calculate laser parameters
@@ -621,18 +677,67 @@
             errorDiv.style.display = 'none';
             errorDiv.textContent = '';
             
-            // Check if FWHM analysis has been run
-            if (!lastAnalysisResult) {
-                errorDiv.textContent = 'Please run FWHM Analysis first in the FWHM Analysis tab.';
-                errorDiv.style.display = 'block';
-                return;
+            // Get spot size input mode
+            const spotSizeMode = document.getElementById('spotSizeMode').value;
+            let w0XMicron, w0YMicron;  // 1/e² beam radii in microns
+            
+            if (spotSizeMode === 'from_analysis') {
+                // Check if FWHM analysis has been run
+                if (!lastAnalysisResult) {
+                    errorDiv.textContent = 'Please run FWHM Analysis first in the FWHM Analysis tab.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                const pixelPerMicron = parseFloat(document.getElementById('pixelPerMicron').value) || 0;
+                if (pixelPerMicron <= 0) {
+                    errorDiv.textContent = 'Please enter a valid pixel per micron value in the FWHM Analysis tab.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                // Get FWHM in microns from analysis
+                const fwhmXMicron = lastAnalysisResult.fwhmX / pixelPerMicron;
+                const fwhmYMicron = lastAnalysisResult.fwhmY / pixelPerMicron;
+                
+                // Convert FWHM to 1/e² beam radius
+                // For Gaussian beam: w0 = FWHM / sqrt(2*ln(2))
+                const conversionFactor = Math.sqrt(2 * Math.log(2));
+                w0XMicron = fwhmXMicron / conversionFactor;
+                w0YMicron = fwhmYMicron / conversionFactor;
+                
+            } else if (spotSizeMode === 'manual_fwhm') {
+                // Get manual FWHM inputs
+                const fwhmXMicron = parseFloat(document.getElementById('manualFwhmX').value);
+                const fwhmYMicron = parseFloat(document.getElementById('manualFwhmY').value);
+                
+                if (!fwhmXMicron || fwhmXMicron <= 0 || !fwhmYMicron || fwhmYMicron <= 0) {
+                    errorDiv.textContent = 'Please enter valid FWHM values.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                // Convert FWHM to 1/e² beam radius
+                const conversionFactor = Math.sqrt(2 * Math.log(2));
+                w0XMicron = fwhmXMicron / conversionFactor;
+                w0YMicron = fwhmYMicron / conversionFactor;
+                
+            } else if (spotSizeMode === 'manual_1e2') {
+                // Get manual 1/e² radius inputs
+                w0XMicron = parseFloat(document.getElementById('manual1e2RadiusX').value);
+                w0YMicron = parseFloat(document.getElementById('manual1e2RadiusY').value);
+                
+                if (!w0XMicron || w0XMicron <= 0 || !w0YMicron || w0YMicron <= 0) {
+                    errorDiv.textContent = 'Please enter valid 1/e² radius values.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
             }
             
             // Get input values
             const repRate = parseFloat(document.getElementById('repRate').value);
             const pulseDuration = parseFloat(document.getElementById('pulseDuration').value);
             const mode = document.getElementById('energyOrPower').value;
-            const pixelPerMicron = parseFloat(document.getElementById('pixelPerMicron').value) || 0;
             
             // Validate inputs
             if (!repRate || repRate <= 0) {
@@ -643,12 +748,6 @@
             
             if (!pulseDuration || pulseDuration <= 0) {
                 errorDiv.textContent = 'Please enter a valid pulse duration.';
-                errorDiv.style.display = 'block';
-                return;
-            }
-            
-            if (pixelPerMicron <= 0) {
-                errorDiv.textContent = 'Please enter a valid pixel per micron value in the FWHM Analysis tab.';
                 errorDiv.style.display = 'block';
                 return;
             }
@@ -671,24 +770,29 @@
                 pulseEnergy = avgPower / repRate;
             }
             
-            // Get FWHM in microns
-            const fwhmXMicron = lastAnalysisResult.fwhmX / pixelPerMicron;
-            const fwhmYMicron = lastAnalysisResult.fwhmY / pixelPerMicron;
-            
-            // Calculate spot area using FWHM dimensions
-            // For an elliptical spot: Area = π * (FWHM_x/2) * (FWHM_y/2)
-            // This calculates the area of an ellipse with semi-axes equal to FWHM/2.
-            // For a Gaussian beam, this is an approximation of the effective area at FWHM intensity.
-            const spotAreaMicron2 = Math.PI * (fwhmXMicron / 2) * (fwhmYMicron / 2);
+            // Calculate spot area at 1/e² using corrected formula
+            // For a Gaussian beam, the area at 1/e² intensity is: A = π * w0_x * w0_y
+            const spotAreaMicron2 = Math.PI * w0XMicron * w0YMicron;
             const spotAreaCm2 = spotAreaMicron2 * 1e-8;  // Convert µm² to cm²
             
             // Calculate parameters
             const peakPower = pulseEnergy / pulseDuration;
             const avgPower = pulseEnergy * repRate;
-            const peakFluence = pulseEnergy / spotAreaCm2;  // J/cm²
-            const peakIntensity = peakPower / spotAreaCm2;  // W/cm²
             
-            // Display spot area
+            // Peak fluence at 1/e² (using corrected area)
+            const peakFluence = pulseEnergy / spotAreaCm2;  // J/cm²
+            
+            // Peak intensity at 1/e² with 0.94 correction factor
+            // The factor of 0.94 accounts for the actual peak intensity for a Gaussian beam
+            const peakIntensity = 0.94 * (peakPower / spotAreaCm2);  // W/cm²
+            
+            // Display spot area and beam parameters
+            const conversionFactor = Math.sqrt(2 * Math.log(2));
+            const fwhmXMicron = w0XMicron * conversionFactor;
+            const fwhmYMicron = w0YMicron * conversionFactor;
+            
+            document.getElementById('calcFwhmX').textContent = `${fwhmXMicron.toFixed(2)} µm`;
+            document.getElementById('calcFwhmY').textContent = `${fwhmYMicron.toFixed(2)} µm`;
             document.getElementById('calcSpotArea').textContent = 
                 `${spotAreaMicron2.toExponential(3)} µm² (${spotAreaCm2.toExponential(3)} cm²)`;
             document.getElementById('calcSpotAreaRow').style.display = 'flex';
