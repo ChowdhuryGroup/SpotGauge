@@ -133,8 +133,9 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
     fwhm_x = calculate_fwhm_1d(profile_x)
     fwhm_y = calculate_fwhm_1d(profile_y)
     
-    # Calculate 1/e^2 width (threshold at 1/e^2 ≈ 0.1353 of maximum)
-    # The 1/e^2 radius is half of the 1/e^2 width (diameter)
+    # Calculate 1/e^2 radius - a standard laser beam measurement.
+    # The 1/e^2 radius is where the intensity drops to 1/e^2 ≈ 13.5% of peak.
+    # For a Gaussian beam exp(-2r²/w²), this occurs at r = w (the beam radius).
     e2_threshold = 1.0 / (np.e ** 2)  # ≈ 0.1353
     width_e2_x = calculate_width_at_threshold(profile_x, e2_threshold)
     width_e2_y = calculate_width_at_threshold(profile_y, e2_threshold)

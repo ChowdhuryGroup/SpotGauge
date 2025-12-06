@@ -643,7 +643,10 @@ result
                 const croppedJet = result.get('cropped_jet').toJs();
                 const cropBounds = result.get('crop_bounds');
                 
-                // Store analysis result for lineout visualization
+                // Store analysis result for lineout visualization on the preview image.
+                // Properties: centerX, centerY (peak position in pixels), 
+                // fwhmX, fwhmY (FWHM values), radiusE2X, radiusE2Y (1/e² radius values),
+                // cropBounds (Pyodide Map with x_start, x_end, y_start, y_end)
                 lastAnalysisResult = { centerX, centerY, fwhmX, fwhmY, radiusE2X, radiusE2Y, cropBounds };
                 
                 // Display results in pixels
@@ -760,10 +763,12 @@ result
                 const targetLengthMicron = targetLengthPx / pixelPerMicron;
                 
                 // Round to nice values: 1, 2, 5, 10, 20, 50, 100, etc.
+                // Select the largest nice value that fits within 150% of target length
                 const niceValues = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+                const selectionThreshold = 1.5;  // Allow up to 50% larger than target
                 let scaleBarMicron = niceValues[0];
                 for (const v of niceValues) {
-                    if (v <= targetLengthMicron * 1.5) {
+                    if (v <= targetLengthMicron * selectionThreshold) {
                         scaleBarMicron = v;
                     }
                 }
