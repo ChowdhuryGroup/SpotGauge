@@ -348,6 +348,7 @@
             <div id="croppedFocalSpot" style="display: none; margin-top: 20px;">
                 <h3>Cropped Focal Spot (Jet Colormap)</h3>
                 <canvas id="croppedCanvas" style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px;"></canvas>
+                <button class="btn" id="downloadCroppedBtn" style="margin-top: 10px;">📥 Download Cropped Image</button>
             </div>
             
             <div class="chart-container" style="display: none;" id="chartContainerX">
@@ -874,6 +875,15 @@ result
             const errorContainer = document.getElementById('errorContainer');
             errorContainer.innerHTML = `<div class="error">${message}</div>`;
         }
+
+        // Download cropped image button
+        document.getElementById('downloadCroppedBtn').addEventListener('click', () => {
+            const canvas = document.getElementById('croppedCanvas');
+            const link = document.createElement('a');
+            link.download = 'cropped_focal_spot.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
 
         // Initialize when page loads
         initPyodide();
