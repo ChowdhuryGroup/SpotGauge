@@ -151,6 +151,110 @@ def test_noisy_gaussian():
     print("  ✓ PASSED\n")
 
 
+def test_background_subtraction():
+    """Test FWHM calculation with background subtraction."""
+    # Create a 2D Gaussian focal spot with a constant background
+    sigma = 12.0
+    expected_fwhm = 2.355 * sigma  # ~28.26
+    background_level = 50.0
+    
+    y, x = np.mgrid[0:80, 0:80]
+    center = 40
+    gaussian_2d = np.exp(-((x - center) ** 2 + (y - center) ** 2) / (2 * sigma ** 2))
+    
+    # Create image with background (RGB)
+    image_with_bg = np.stack([
+        gaussian_2d * 200 + background_level,
+        gaussian_2d * 200 + background_level,
+        gaussian_2d * 200 + background_level
+    ], axis=-1)
+    
+    # Create background image (constant)
+    background = np.ones((80, 80, 3)) * background_level
+    
+    # Test with background subtraction
+    result = process_image_data(image_with_bg, smooth_sigma=0, background=background)
+    
+    print(f"Background Subtraction test:")
+    print(f"  Expected FWHM: ~{expected_fwhm:.2f}")
+    print(f"  Calculated FWHM X: {result['fwhm_x']:.2f}")
+    print(f"  Calculated FWHM Y: {result['fwhm_y']:.2f}")
+    
+    # FWHM should be close to expected
+    assert abs(result['fwhm_x'] - expected_fwhm) < 2.0, f"FWHM X error: {abs(result['fwhm_x'] - expected_fwhm)}"
+    assert abs(result['fwhm_y'] - expected_fwhm) < 2.0, f"FWHM Y error: {abs(result['fwhm_y'] - expected_fwhm)}"
+    print("  ✓ PASSED\n")
+
+
+def test_background_subtraction_rgba():
+    """Test FWHM calculation with RGBA background subtraction."""
+    sigma = 10.0
+    expected_fwhm = 2.355 * sigma  # ~23.55
+    background_level = 30.0
+    
+    y, x = np.mgrid[0:60, 0:60]
+    center = 30
+    gaussian_2d = np.exp(-((x - center) ** 2 + (y - center) ** 2) / (2 * sigma ** 2))
+    
+    # Create RGBA image with background
+    image_with_bg = np.stack([
+        gaussian_2d * 200 + background_level,
+        gaussian_2d * 200 + background_level,
+        gaussian_2d * 200 + background_level,
+        np.ones_like(gaussian_2d) * 255  # Alpha channel
+    ], axis=-1)
+    
+    # Create RGBA background image
+    background = np.stack([
+        np.ones((60, 60)) * background_level,
+        np.ones((60, 60)) * background_level,
+        np.ones((60, 60)) * background_level,
+        np.ones((60, 60)) * 255
+    ], axis=-1)
+    
+    result = process_image_data(image_with_bg, smooth_sigma=0, background=background)
+    
+    print(f"RGBA Background Subtraction test:")
+    print(f"  Expected FWHM: ~{expected_fwhm:.2f}")
+    print(f"  Calculated FWHM X: {result['fwhm_x']:.2f}")
+    print(f"  Calculated FWHM Y: {result['fwhm_y']:.2f}")
+    
+    assert abs(result['fwhm_x'] - expected_fwhm) < 2.0
+    assert abs(result['fwhm_y'] - expected_fwhm) < 2.0
+    print("  ✓ PASSED\n")
+
+
+def test_background_dimension_mismatch():
+    """Test FWHM calculation with background of different dimensions."""
+    sigma = 12.0
+    expected_fwhm = 2.355 * sigma  # ~28.26
+    background_level = 40.0
+    
+    # Create 80x80 image with center at 40,40
+    y, x = np.mgrid[0:80, 0:80]
+    center = 40
+    gaussian_2d = np.exp(-((x - center) ** 2 + (y - center) ** 2) / (2 * sigma ** 2))
+    
+    # Create image with background (grayscale 2D)
+    image_with_bg = gaussian_2d * 200 + background_level
+    
+    # Create a smaller 60x60 background image (should be center-aligned)
+    background = np.ones((60, 60)) * background_level
+    
+    result = process_image_data(image_with_bg, smooth_sigma=0, background=background)
+    
+    print(f"Background Dimension Mismatch test:")
+    print(f"  Image size: 80x80, Background size: 60x60")
+    print(f"  Expected FWHM: ~{expected_fwhm:.2f}")
+    print(f"  Calculated FWHM X: {result['fwhm_x']:.2f}")
+    print(f"  Calculated FWHM Y: {result['fwhm_y']:.2f}")
+    
+    # FWHM should still be reasonable (center is covered by background)
+    assert abs(result['fwhm_x'] - expected_fwhm) < 3.0, f"FWHM X error: {abs(result['fwhm_x'] - expected_fwhm)}"
+    assert abs(result['fwhm_y'] - expected_fwhm) < 3.0, f"FWHM Y error: {abs(result['fwhm_y'] - expected_fwhm)}"
+    print("  ✓ PASSED\n")
+
+
 if __name__ == '__main__':
     print("=" * 50)
     print("FWHM Calculator Tests")
@@ -161,6 +265,9 @@ if __name__ == '__main__':
     test_process_rgb_image()
     test_process_rgba_image()
     test_noisy_gaussian()
+    test_background_subtraction()
+    test_background_subtraction_rgba()
+    test_background_dimension_mismatch()
     
     print("=" * 50)
     print("All tests passed! ✓")
