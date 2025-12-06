@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpotGauge - FWHM Calculator</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        .description {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .upload-area {
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .upload-area:hover {
+            background-color: #ecf0f1;
+        }
+        
+        .upload-area.dragover {
+            background-color: #d5e8f7;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .preview-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        #imagePreview {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 4px;
+        }
+        
+        .results {
+            margin-top: 20px;
+        }
+        
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .result-label {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .result-value {
+            color: #3498db;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            color: #e74c3c;
+            padding: 10px;
+            background-color: #fadbd8;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .settings {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .settings label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .settings input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .chart-container {
+            margin-top: 20px;
+            height: 200px;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        #status {
+            text-align: center;
+            padding: 10px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔬 SpotGauge - FWHM Calculator</h1>
+    <p class="description">Upload a focal spot image to calculate its Full Width at Half Maximum (FWHM)</p>
+    
+    <div id="status">Loading Python environment...</div>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>📤 Upload Image</h2>
+            <div class="upload-area" id="uploadArea">
+                <p>📁 Click or drag & drop an image here</p>
+                <p style="font-size: 12px; color: #999;">Supported formats: PNG, JPG, TIFF, BMP</p>
+            </div>
+            <input type="file" id="fileInput" accept="image/*">
+            
+            <div class="preview-container">
+                <img id="imagePreview" style="display: none;">
+            </div>
+            
+            <div class="settings">
+                <label for="smoothSigma">Gaussian Smoothing (σ):</label>
+                <input type="number" id="smoothSigma" value="1.0" min="0" max="10" step="0.1">
+            </div>
+            
+            <button class="btn" id="analyzeBtn" disabled>Analyze Focal Spot</button>
+        </div>
+        
+        <div class="panel">
+            <h2>📊 Results</h2>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Calculating FWHM...</p>
+            </div>
+            
+            <div id="errorContainer"></div>
+            
+            <div class="results" id="results" style="display: none;">
+                <div class="result-item">
+                    <span class="result-label">FWHM X:</span>
+                    <span class="result-value" id="fwhmX">-</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">FWHM Y:</span>
+                    <span class="result-value" id="fwhmY">-</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Peak X:</span>
+                    <span class="result-value" id="centerX">-</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Peak Y:</span>
+                    <span class="result-value" id="centerY">-</span>
+                </div>
+            </div>
+            
+            <div class="chart-container" style="display: none;" id="chartContainerX">
+                <h3>X Profile</h3>
+                <canvas id="chartX"></canvas>
+            </div>
+            
+            <div class="chart-container" style="display: none;" id="chartContainerY">
+                <h3>Y Profile</h3>
+                <canvas id="chartY"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let pyodide = null;
+        let imageData = null;
+        let chartX = null;
+        let chartY = null;
+
+        // Initialize Pyodide
+        async function initPyodide() {
+            const status = document.getElementById('status');
+            try {
+                status.textContent = 'Loading Python environment...';
+                pyodide = await loadPyodide();
+                
+                status.textContent = 'Loading scientific packages...';
+                await pyodide.loadPackage(['numpy', 'scipy']);
+                
+                // Load the FWHM calculator code
+                status.textContent = 'Loading FWHM calculator...';
+                const response = await fetch('fwhm_calculator.py');
+                const code = await response.text();
+                await pyodide.runPythonAsync(code);
+                
+                status.textContent = 'Ready! Upload an image to analyze.';
+                document.getElementById('analyzeBtn').disabled = false;
+            } catch (error) {
+                status.textContent = 'Error loading Python environment: ' + error.message;
+                console.error(error);
+            }
+        }
+
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError('Please upload an image file.');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+                
+                // Load image to get pixel data
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    document.getElementById('status').textContent = `Image loaded: ${img.width}x${img.height} pixels`;
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Analyze button
+        analyzeBtn.addEventListener('click', async () => {
+            if (!imageData || !pyodide) return;
+            
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const errorContainer = document.getElementById('errorContainer');
+            
+            loading.classList.add('active');
+            results.style.display = 'none';
+            errorContainer.innerHTML = '';
+            
+            try {
+                const smoothSigma = parseFloat(document.getElementById('smoothSigma').value) || 1.0;
+                
+                // Convert image data to numpy array
+                const width = imageData.width;
+                const height = imageData.height;
+                const data = imageData.data;
+                
+                // Pass data to Python
+                pyodide.globals.set('img_width', width);
+                pyodide.globals.set('img_height', height);
+                pyodide.globals.set('img_data', Array.from(data));
+                pyodide.globals.set('smooth_sigma', smoothSigma);
+                
+                const result = await pyodide.runPythonAsync(`
+import numpy as np
+
+# Reconstruct image from flat array
+data = np.array(img_data, dtype=np.float64).reshape((img_height, img_width, 4))
+
+# Process and calculate FWHM
+result = process_image_data(data, smooth_sigma)
+result
+                `);
+                
+                // Get results
+                const fwhmX = result.get('fwhm_x');
+                const fwhmY = result.get('fwhm_y');
+                const centerX = result.get('center_x');
+                const centerY = result.get('center_y');
+                const profileX = result.get('profile_x').toJs();
+                const profileY = result.get('profile_y').toJs();
+                
+                // Display results
+                document.getElementById('fwhmX').textContent = fwhmX.toFixed(2) + ' px';
+                document.getElementById('fwhmY').textContent = fwhmY.toFixed(2) + ' px';
+                document.getElementById('centerX').textContent = centerX + ' px';
+                document.getElementById('centerY').textContent = centerY + ' px';
+                
+                results.style.display = 'block';
+                
+                // Draw charts
+                drawChart('chartX', 'chartContainerX', profileX, fwhmX, centerX, 'X Profile');
+                drawChart('chartY', 'chartContainerY', profileY, fwhmY, centerY, 'Y Profile');
+                
+            } catch (error) {
+                showError('Error calculating FWHM: ' + error.message);
+                console.error(error);
+            } finally {
+                loading.classList.remove('active');
+            }
+        });
+
+        function drawChart(canvasId, containerId, profile, fwhm, center, title) {
+            const container = document.getElementById(containerId);
+            container.style.display = 'block';
+            
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            // Destroy existing chart if any
+            if (canvasId === 'chartX' && chartX) {
+                chartX.destroy();
+            } else if (canvasId === 'chartY' && chartY) {
+                chartY.destroy();
+            }
+            
+            const maxVal = Math.max(...profile);
+            const halfMax = maxVal / 2;
+            
+            const labels = profile.map((_, i) => i);
+            const halfMaxLine = profile.map(() => halfMax);
+            
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: title,
+                            data: profile,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Half Maximum',
+                            data: halfMaxLine,
+                            borderColor: '#e74c3c',
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${title} (FWHM: ${fwhm.toFixed(2)} px)`
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Position (pixels)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Intensity'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            if (canvasId === 'chartX') {
+                chartX = chart;
+            } else {
+                chartY = chart;
+            }
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        // Initialize when page loads
+        initPyodide();
+    </script>
+</body>
+</html>
