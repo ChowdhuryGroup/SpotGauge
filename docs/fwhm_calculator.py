@@ -58,7 +58,7 @@ def calculate_fwhm_1d(profile):
     return fwhm
 
 
-def calculate_fwhm_2d(image, smooth_sigma=1.0):
+def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
     """
     Calculate the FWHM of a 2D focal spot image in both X and Y directions.
     
@@ -68,6 +68,9 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0):
         The focal spot image
     smooth_sigma : float, optional
         Gaussian smoothing sigma to reduce noise (default: 1.0)
+    lineout_width : int, optional
+        Width of the lineout in pixels (default: 1). If greater than 1,
+        the profile is averaged over multiple adjacent rows/columns.
         
     Returns
     -------
@@ -81,6 +84,7 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0):
         - 'profile_y': 1D profile along Y through the center
     """
     image = np.asarray(image, dtype=float)
+    lineout_width = max(1, int(lineout_width))
     
     # Apply Gaussian smoothing to reduce noise
     if smooth_sigma > 0:
@@ -92,9 +96,19 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0):
     max_idx = np.unravel_index(np.argmax(smoothed), smoothed.shape)
     center_y, center_x = max_idx
     
-    # Extract 1D profiles through the peak
-    profile_x = smoothed[center_y, :]
-    profile_y = smoothed[:, center_x]
+    # Extract 1D profiles through the peak with lineout width
+    half_width = lineout_width // 2
+    height, width = smoothed.shape
+    
+    # X profile: average over lineout_width rows centered at center_y
+    y_start = max(0, center_y - half_width)
+    y_end = min(height, center_y + half_width + 1)
+    profile_x = np.mean(smoothed[y_start:y_end, :], axis=0)
+    
+    # Y profile: average over lineout_width columns centered at center_x
+    x_start = max(0, center_x - half_width)
+    x_end = min(width, center_x + half_width + 1)
+    profile_y = np.mean(smoothed[:, x_start:x_end], axis=1)
     
     # Calculate FWHM for each direction
     fwhm_x = calculate_fwhm_1d(profile_x)
@@ -110,7 +124,34 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0):
     }
 
 
-def process_image_data(image_data, smooth_sigma=1.0, background=None):
+def apply_jet_colormap(data):
+    """
+    Apply jet colormap to normalized data.
+    
+    Parameters
+    ----------
+    data : 2D array-like
+        Normalized 2D data (0-1 range)
+        
+    Returns
+    -------
+    list
+        RGB values as a list of lists (height x width x 3)
+    """
+    data = np.asarray(data, dtype=float)
+    
+    # Jet colormap interpolation
+    # Blue -> Cyan -> Green -> Yellow -> Red
+    r = np.clip(1.5 - np.abs(4.0 * data - 3.0), 0, 1)
+    g = np.clip(1.5 - np.abs(4.0 * data - 2.0), 0, 1)
+    b = np.clip(1.5 - np.abs(4.0 * data - 1.0), 0, 1)
+    
+    # Combine into RGB array (0-255)
+    rgb = np.stack([r, g, b], axis=-1) * 255
+    return rgb.astype(np.uint8).tolist()
+
+
+def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None):
     """
     Process raw image data and calculate FWHM.
     
@@ -124,11 +165,17 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None):
         Background image to subtract from the main image (default: None).
         If dimensions differ from image_data, the background is center-aligned
         and cropped/padded to match.
+    lineout_width : int, optional
+        Width of the lineout in pixels (default: 1)
+    crop_size : int, optional
+        Size of the cropped focal spot region (default: None, auto-calculated based on FWHM)
         
     Returns
     -------
     dict
-        FWHM results from calculate_fwhm_2d
+        FWHM results from calculate_fwhm_2d, plus:
+        - 'cropped_jet': Cropped focal spot with jet colormap (RGB list)
+        - 'crop_bounds': Dictionary with x_start, x_end, y_start, y_end
     """
     image = np.asarray(image_data, dtype=float)
     
@@ -182,4 +229,46 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None):
         # Subtract background and clip to non-negative values
         image = np.clip(image - bg, 0, None)
     
-    return calculate_fwhm_2d(image, smooth_sigma)
+    result = calculate_fwhm_2d(image, smooth_sigma, lineout_width)
+    
+    # Create cropped focal spot with jet colormap
+    center_x = result['center_x']
+    center_y = result['center_y']
+    fwhm_x = result['fwhm_x']
+    fwhm_y = result['fwhm_y']
+    
+    # Auto-calculate crop size based on FWHM (3x the larger FWHM)
+    if crop_size is None:
+        crop_size = int(max(fwhm_x, fwhm_y) * 3)
+    crop_size = max(crop_size, 10)  # Minimum size
+    
+    height, width = image.shape
+    half_size = crop_size // 2
+    
+    # Calculate crop bounds
+    x_start = max(0, center_x - half_size)
+    x_end = min(width, center_x + half_size)
+    y_start = max(0, center_y - half_size)
+    y_end = min(height, center_y + half_size)
+    
+    # Extract cropped region
+    cropped = image[y_start:y_end, x_start:x_end]
+    
+    # Normalize to 0-1 for colormap
+    if cropped.max() > cropped.min():
+        normalized = (cropped - cropped.min()) / (cropped.max() - cropped.min())
+    else:
+        normalized = np.zeros_like(cropped)
+    
+    # Apply jet colormap
+    cropped_jet = apply_jet_colormap(normalized)
+    
+    result['cropped_jet'] = cropped_jet
+    result['crop_bounds'] = {
+        'x_start': int(x_start),
+        'x_end': int(x_end),
+        'y_start': int(y_start),
+        'y_end': int(y_end)
+    }
+    
+    return result

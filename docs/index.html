@@ -253,6 +253,13 @@
             <div class="settings">
                 <label for="smoothSigma">Gaussian Smoothing (σ):</label>
                 <input type="number" id="smoothSigma" value="1.0" min="0" max="10" step="0.1">
+                
+                <label for="lineoutWidth" style="margin-top: 15px;">Lineout Width (px):</label>
+                <input type="range" id="lineoutWidth" min="1" max="40" value="1" style="width: 100%;">
+                <span id="lineoutWidthValue">1 px</span>
+                
+                <label for="pixelPerMicron" style="margin-top: 15px;">Pixel per Micron (optional):</label>
+                <input type="number" id="pixelPerMicron" placeholder="e.g., 10.5" min="0" step="0.1">
             </div>
             
             <div class="background-section">
@@ -290,6 +297,14 @@
                     <span class="result-label">FWHM Y:</span>
                     <span class="result-value" id="fwhmY">-</span>
                 </div>
+                <div class="result-item" id="fwhmXMicronRow" style="display: none;">
+                    <span class="result-label">FWHM X (µm):</span>
+                    <span class="result-value" id="fwhmXMicron">-</span>
+                </div>
+                <div class="result-item" id="fwhmYMicronRow" style="display: none;">
+                    <span class="result-label">FWHM Y (µm):</span>
+                    <span class="result-value" id="fwhmYMicron">-</span>
+                </div>
                 <div class="result-item">
                     <span class="result-label">Peak X:</span>
                     <span class="result-value" id="centerX">-</span>
@@ -298,6 +313,11 @@
                     <span class="result-label">Peak Y:</span>
                     <span class="result-value" id="centerY">-</span>
                 </div>
+            </div>
+            
+            <div id="croppedFocalSpot" style="display: none; margin-top: 20px;">
+                <h3>Cropped Focal Spot (Jet Colormap)</h3>
+                <canvas id="croppedCanvas" style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px;"></canvas>
             </div>
             
             <div class="chart-container" style="display: none;" id="chartContainerX">
@@ -320,6 +340,8 @@
         let bgImageData = null;
         let chartX = null;
         let chartY = null;
+        let originalImageData = null;  // Store original image for overlay
+        let lastAnalysisResult = null;  // Store last analysis result for lineout visualization
 
         // Initialize Pyodide
         async function initPyodide() {
@@ -343,6 +365,54 @@
                 status.textContent = 'Error loading Python environment: ' + error.message;
                 console.error(error);
             }
+        }
+
+        // Lineout width slider handling
+        const lineoutWidthSlider = document.getElementById('lineoutWidth');
+        const lineoutWidthValue = document.getElementById('lineoutWidthValue');
+        
+        lineoutWidthSlider.addEventListener('input', () => {
+            lineoutWidthValue.textContent = lineoutWidthSlider.value + ' px';
+            updateLineoutVisualization();
+        });
+        
+        function updateLineoutVisualization() {
+            if (!originalImageData || !lastAnalysisResult) return;
+            
+            const lineoutWidth = parseInt(lineoutWidthSlider.value);
+            const centerX = lastAnalysisResult.centerX;
+            const centerY = lastAnalysisResult.centerY;
+            
+            // Create a copy of the original image with lineout overlay
+            const canvas = document.createElement('canvas');
+            canvas.width = originalImageData.width;
+            canvas.height = originalImageData.height;
+            const ctx = canvas.getContext('2d');
+            ctx.putImageData(originalImageData, 0, 0);
+            
+            // Draw lineout regions
+            ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+            ctx.lineWidth = 2;
+            
+            const halfWidth = Math.floor(lineoutWidth / 2);
+            
+            // Horizontal lineout (X profile)
+            ctx.strokeRect(0, centerY - halfWidth, originalImageData.width, lineoutWidth);
+            
+            // Vertical lineout (Y profile)
+            ctx.strokeRect(centerX - halfWidth, 0, lineoutWidth, originalImageData.height);
+            
+            // Draw center crosshair
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            ctx.beginPath();
+            ctx.moveTo(centerX - 10, centerY);
+            ctx.lineTo(centerX + 10, centerY);
+            ctx.moveTo(centerX, centerY - 10);
+            ctx.lineTo(centerX, centerY + 10);
+            ctx.stroke();
+            
+            // Update the preview image
+            imagePreview.src = canvas.toDataURL();
         }
 
         // File upload handling
@@ -397,7 +467,11 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0);
                     imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    // Store a copy of original image data for overlay visualization
+                    originalImageData = ctx.getImageData(0, 0, img.width, img.height);
                     document.getElementById('status').textContent = `Image loaded: ${img.width}x${img.height} pixels`;
+                    // Reset analysis result when new image is loaded
+                    lastAnalysisResult = null;
                 };
                 img.src = e.target.result;
             };
@@ -485,6 +559,8 @@
             
             try {
                 const smoothSigma = parseFloat(document.getElementById('smoothSigma').value) || 1.0;
+                const lineoutWidth = parseInt(document.getElementById('lineoutWidth').value) || 1;
+                const pixelPerMicron = parseFloat(document.getElementById('pixelPerMicron').value) || 0;
                 
                 // Convert image data to numpy array
                 const width = imageData.width;
@@ -496,6 +572,7 @@
                 pyodide.globals.set('img_height', height);
                 pyodide.globals.set('img_data', Array.from(data));
                 pyodide.globals.set('smooth_sigma', smoothSigma);
+                pyodide.globals.set('lineout_width', lineoutWidth);
                 
                 // Pass background data if available
                 if (bgImageData) {
@@ -520,7 +597,7 @@ else:
     bg = None
 
 # Process and calculate FWHM
-result = process_image_data(data, smooth_sigma, background=bg)
+result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width)
 result
                 `);
                 
@@ -531,14 +608,41 @@ result
                 const centerY = result.get('center_y');
                 const profileX = result.get('profile_x').toJs();
                 const profileY = result.get('profile_y').toJs();
+                const croppedJet = result.get('cropped_jet').toJs();
+                const cropBounds = result.get('crop_bounds');
                 
-                // Display results
+                // Store analysis result for lineout visualization
+                lastAnalysisResult = { centerX, centerY, fwhmX, fwhmY };
+                
+                // Display results in pixels
                 document.getElementById('fwhmX').textContent = fwhmX.toFixed(2) + ' px';
                 document.getElementById('fwhmY').textContent = fwhmY.toFixed(2) + ' px';
                 document.getElementById('centerX').textContent = centerX + ' px';
                 document.getElementById('centerY').textContent = centerY + ' px';
                 
+                // Display results in microns if scale is provided
+                const fwhmXMicronRow = document.getElementById('fwhmXMicronRow');
+                const fwhmYMicronRow = document.getElementById('fwhmYMicronRow');
+                
+                if (pixelPerMicron > 0) {
+                    const fwhmXMicron = fwhmX / pixelPerMicron;
+                    const fwhmYMicron = fwhmY / pixelPerMicron;
+                    document.getElementById('fwhmXMicron').textContent = fwhmXMicron.toFixed(2) + ' µm';
+                    document.getElementById('fwhmYMicron').textContent = fwhmYMicron.toFixed(2) + ' µm';
+                    fwhmXMicronRow.style.display = 'flex';
+                    fwhmYMicronRow.style.display = 'flex';
+                } else {
+                    fwhmXMicronRow.style.display = 'none';
+                    fwhmYMicronRow.style.display = 'none';
+                }
+                
                 results.style.display = 'block';
+                
+                // Update lineout visualization on the image
+                updateLineoutVisualization();
+                
+                // Display cropped focal spot with jet colormap
+                displayCroppedFocalSpot(croppedJet);
                 
                 // Draw charts
                 drawChart('chartX', 'chartContainerX', profileX, fwhmX, centerX, 'X Profile');
@@ -551,6 +655,33 @@ result
                 loading.classList.remove('active');
             }
         });
+        
+        function displayCroppedFocalSpot(croppedJet) {
+            const container = document.getElementById('croppedFocalSpot');
+            const canvas = document.getElementById('croppedCanvas');
+            container.style.display = 'block';
+            
+            const height = croppedJet.length;
+            const width = croppedJet[0].length;
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(width, height);
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    imgData.data[idx] = croppedJet[y][x][0];     // R
+                    imgData.data[idx + 1] = croppedJet[y][x][1]; // G
+                    imgData.data[idx + 2] = croppedJet[y][x][2]; // B
+                    imgData.data[idx + 3] = 255;                  // A
+                }
+            }
+            
+            ctx.putImageData(imgData, 0, 0);
+        }
 
         function drawChart(canvasId, containerId, profile, fwhm, center, title) {
             const container = document.getElementById(containerId);
