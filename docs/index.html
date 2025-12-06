@@ -699,7 +699,8 @@ result
                     pixelPerMicron,
                     cropBounds,
                     centerX,
-                    centerY
+                    centerY,
+                    profileY
                 });
                 
                 // Draw charts
@@ -740,17 +741,96 @@ result
             
             ctx.putImageData(imgData, 0, 0);
             
-            // Draw vertical lineout if enabled
+            // Draw vertical lineout and intensity plot if enabled
             if (options.showVerticalLineout && options.cropBounds) {
                 const cropBounds = options.cropBounds;
                 const cropCenterX = options.centerX - cropBounds.get('x_start');
                 
+                // Draw vertical lineout marker (white line)
                 ctx.strokeStyle = 'white';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(cropCenterX, 0);
                 ctx.lineTo(cropCenterX, height);
                 ctx.stroke();
+                
+                // Draw intensity profile on secondary axis if profile data is available
+                if (options.profileY && options.profileY.length > 0) {
+                    // Extract the portion of profileY that corresponds to the cropped region
+                    const yStart = cropBounds.get('y_start');
+                    const yEnd = cropBounds.get('y_end');
+                    const croppedProfileY = options.profileY.slice(yStart, yEnd);
+                    
+                    if (croppedProfileY.length > 0) {
+                        // Normalize the profile for display
+                        const maxIntensity = Math.max(...croppedProfileY);
+                        const minIntensity = Math.min(...croppedProfileY);
+                        const intensityRange = maxIntensity - minIntensity || 1;
+                        
+                        // Reserve space on the right side for the axis (30% of width for plot area)
+                        const plotWidth = width * 0.30;
+                        const plotStartX = width - plotWidth - 5;  // 5px margin from right edge
+                        const axisX = width - 5;  // Axis line position
+                        
+                        // Draw semi-transparent background for the plot area
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                        ctx.fillRect(plotStartX - 5, 0, plotWidth + 10, height);
+                        
+                        // Draw the intensity profile as a line chart
+                        ctx.strokeStyle = 'cyan';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        
+                        for (let i = 0; i < croppedProfileY.length; i++) {
+                            const normalizedIntensity = (croppedProfileY[i] - minIntensity) / intensityRange;
+                            const xPos = plotStartX + normalizedIntensity * plotWidth;
+                            const yPos = (i / (croppedProfileY.length - 1)) * height;
+                            
+                            if (i === 0) {
+                                ctx.moveTo(xPos, yPos);
+                            } else {
+                                ctx.lineTo(xPos, yPos);
+                            }
+                        }
+                        ctx.stroke();
+                        
+                        // Draw axis line on the right
+                        ctx.strokeStyle = 'white';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(axisX, 0);
+                        ctx.lineTo(axisX, height);
+                        ctx.stroke();
+                        
+                        // Draw tick marks and labels for the secondary axis
+                        ctx.font = 'bold 12px Arial';
+                        ctx.fillStyle = 'white';
+                        ctx.textAlign = 'right';
+                        
+                        // Max intensity label at top
+                        ctx.strokeStyle = 'black';
+                        ctx.lineWidth = 2;
+                        ctx.strokeText(Math.round(maxIntensity).toString(), axisX - 3, 14);
+                        ctx.fillText(Math.round(maxIntensity).toString(), axisX - 3, 14);
+                        
+                        // Min intensity label at bottom
+                        ctx.strokeText(Math.round(minIntensity).toString(), axisX - 3, height - 5);
+                        ctx.fillText(Math.round(minIntensity).toString(), axisX - 3, height - 5);
+                        
+                        // Draw axis label rotated
+                        ctx.save();
+                        ctx.translate(axisX - 2, height / 2);
+                        ctx.rotate(-Math.PI / 2);
+                        ctx.textAlign = 'center';
+                        ctx.font = 'bold 11px Arial';
+                        ctx.strokeStyle = 'black';
+                        ctx.lineWidth = 2;
+                        ctx.strokeText('Intensity', 0, -3);
+                        ctx.fillStyle = 'cyan';
+                        ctx.fillText('Intensity', 0, -3);
+                        ctx.restore();
+                    }
+                }
             }
             
             // Draw scale bar if enabled
@@ -776,20 +856,29 @@ result
                 const scaleBarPx = scaleBarMicron * pixelPerMicron;
                 
                 // Position in lower right corner with some padding
-                const padding = 10;
-                const barHeight = 5;
+                const padding = 15;
+                const barHeight = 10;
                 const x = width - padding - scaleBarPx;
                 const y = height - padding - barHeight;
                 
-                // Draw white scale bar
+                // Draw white scale bar with black outline for visibility
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, scaleBarPx, barHeight);
                 ctx.fillStyle = 'white';
                 ctx.fillRect(x, y, scaleBarPx, barHeight);
                 
-                // Draw scale bar label
-                ctx.font = '12px Arial';
-                ctx.fillStyle = 'white';
+                // Draw scale bar label with larger font and outline
+                const labelText = scaleBarMicron + ' µm';
+                ctx.font = 'bold 18px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText(scaleBarMicron + ' µm', x + scaleBarPx / 2, y - 5);
+                // Draw text outline (stroke) for better visibility
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3;
+                ctx.strokeText(labelText, x + scaleBarPx / 2, y - 8);
+                // Draw text fill
+                ctx.fillStyle = 'white';
+                ctx.fillText(labelText, x + scaleBarPx / 2, y - 8);
             }
         }
 
