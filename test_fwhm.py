@@ -224,6 +224,37 @@ def test_background_subtraction_rgba():
     print("  ✓ PASSED\n")
 
 
+def test_background_dimension_mismatch():
+    """Test FWHM calculation with background of different dimensions."""
+    sigma = 12.0
+    expected_fwhm = 2.355 * sigma  # ~28.26
+    background_level = 40.0
+    
+    # Create 80x80 image with center at 40,40
+    y, x = np.mgrid[0:80, 0:80]
+    center = 40
+    gaussian_2d = np.exp(-((x - center) ** 2 + (y - center) ** 2) / (2 * sigma ** 2))
+    
+    # Create image with background (grayscale 2D)
+    image_with_bg = gaussian_2d * 200 + background_level
+    
+    # Create a smaller 60x60 background image (should be center-aligned)
+    background = np.ones((60, 60)) * background_level
+    
+    result = process_image_data(image_with_bg, smooth_sigma=0, background=background)
+    
+    print(f"Background Dimension Mismatch test:")
+    print(f"  Image size: 80x80, Background size: 60x60")
+    print(f"  Expected FWHM: ~{expected_fwhm:.2f}")
+    print(f"  Calculated FWHM X: {result['fwhm_x']:.2f}")
+    print(f"  Calculated FWHM Y: {result['fwhm_y']:.2f}")
+    
+    # FWHM should still be reasonable (center is covered by background)
+    assert abs(result['fwhm_x'] - expected_fwhm) < 3.0, f"FWHM X error: {abs(result['fwhm_x'] - expected_fwhm)}"
+    assert abs(result['fwhm_y'] - expected_fwhm) < 3.0, f"FWHM Y error: {abs(result['fwhm_y'] - expected_fwhm)}"
+    print("  ✓ PASSED\n")
+
+
 if __name__ == '__main__':
     print("=" * 50)
     print("FWHM Calculator Tests")
@@ -236,6 +267,7 @@ if __name__ == '__main__':
     test_noisy_gaussian()
     test_background_subtraction()
     test_background_subtraction_rgba()
+    test_background_dimension_mismatch()
     
     print("=" * 50)
     print("All tests passed! ✓")

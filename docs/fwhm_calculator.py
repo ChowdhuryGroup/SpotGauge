@@ -122,7 +122,8 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None):
         Gaussian smoothing sigma (default: 1.0)
     background : 2D or 3D array-like, optional
         Background image to subtract from the main image (default: None).
-        Must have the same dimensions as image_data.
+        If dimensions differ from image_data, the background is center-aligned
+        and cropped/padded to match.
         
     Returns
     -------
@@ -156,13 +157,26 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None):
             else:
                 bg = bg[:, :, 0]
         
-        # Resize background if dimensions don't match
+        # Center-align and resize background if dimensions don't match
         if bg.shape != image.shape:
-            # Use simple resize by cropping or padding
-            min_h = min(image.shape[0], bg.shape[0])
-            min_w = min(image.shape[1], bg.shape[1])
             bg_resized = np.zeros_like(image)
-            bg_resized[:min_h, :min_w] = bg[:min_h, :min_w]
+            img_h, img_w = image.shape
+            bg_h, bg_w = bg.shape
+            
+            # Calculate center-aligned offsets
+            # For source (background): where to start reading
+            src_y = max(0, (bg_h - img_h) // 2)
+            src_x = max(0, (bg_w - img_w) // 2)
+            # For destination (resized): where to start writing
+            dst_y = max(0, (img_h - bg_h) // 2)
+            dst_x = max(0, (img_w - bg_w) // 2)
+            
+            # Calculate the overlap region size
+            copy_h = min(img_h - dst_y, bg_h - src_y)
+            copy_w = min(img_w - dst_x, bg_w - src_x)
+            
+            bg_resized[dst_y:dst_y + copy_h, dst_x:dst_x + copy_w] = \
+                bg[src_y:src_y + copy_h, src_x:src_x + copy_w]
             bg = bg_resized
         
         # Subtract background and clip to non-negative values
