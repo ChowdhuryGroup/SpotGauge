@@ -229,14 +229,98 @@
             margin: 0;
             font-size: 13px;
         }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        .tab {
+            background: none;
+            border: none;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 16px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            color: #2c3e50;
+            background-color: #f5f5f5;
+        }
+        
+        .tab.active {
+            color: #3498db;
+            border-bottom-color: #3498db;
+            font-weight: 600;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .input-group input,
+        .input-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .input-group small {
+            display: block;
+            margin-top: 3px;
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .calc-results {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .calc-results h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
     </style>
 </head>
 <body>
-    <h1>🔬 SpotGauge - FWHM Calculator</h1>
-    <p class="description">Upload a focal spot image to calculate its Full Width at Half Maximum (FWHM) - Conrad Kuz 2025-12-05</p>
+    <h1>🔬 SpotGauge - Focal Spot Analysis</h1>
+    <p class="description">Upload a focal spot image to calculate FWHM and laser parameters - Conrad Kuz 2025-12-05</p>
     
     <div id="status">Loading Python environment...</div>
     
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('fwhm')">FWHM Analysis</button>
+        <button class="tab" onclick="switchTab('calculations')">Laser Calculations</button>
+    </div>
+    
+    <div id="fwhmTab" class="tab-content active">
     <div class="container">
         <div class="panel">
             <h2>📤 Upload Image</h2>
@@ -362,6 +446,104 @@
             </div>
         </div>
     </div>
+    </div>
+    
+    <div id="calculationsTab" class="tab-content">
+        <div class="container">
+            <div class="panel">
+                <h2>📐 Laser Parameters</h2>
+                <p style="font-size: 14px; color: #666; margin-bottom: 20px;">
+                    Enter laser parameters to calculate peak fluence, intensity, and power based on the measured focal spot.
+                </p>
+                
+                <div class="input-group">
+                    <label for="repRate">Repetition Rate (Hz):</label>
+                    <input type="number" id="repRate" placeholder="e.g., 1000" min="0" step="0.1">
+                    <small>Laser pulse repetition rate in Hertz</small>
+                </div>
+                
+                <div class="input-group">
+                    <label for="pulseDuration">Pulse Duration (s):</label>
+                    <input type="number" id="pulseDuration" placeholder="e.g., 1e-12" min="0" step="any">
+                    <small>Pulse duration in seconds (e.g., 1e-12 for 1 ps)</small>
+                </div>
+                
+                <div class="input-group">
+                    <label for="energyOrPower">Energy/Power Mode:</label>
+                    <select id="energyOrPower" onchange="toggleEnergyPowerInputs()">
+                        <option value="energy">Pulse Energy</option>
+                        <option value="power">Average Power</option>
+                    </select>
+                </div>
+                
+                <div class="input-group" id="pulseEnergyGroup">
+                    <label for="pulseEnergy">Pulse Energy (J):</label>
+                    <input type="number" id="pulseEnergy" placeholder="e.g., 1e-6" min="0" step="any">
+                    <small>Energy per pulse in Joules (e.g., 1e-6 for 1 µJ)</small>
+                </div>
+                
+                <div class="input-group" id="avgPowerGroup" style="display: none;">
+                    <label for="avgPower">Average Power (W):</label>
+                    <input type="number" id="avgPower" placeholder="e.g., 0.001" min="0" step="any">
+                    <small>Average laser power in Watts (e.g., 0.001 for 1 mW)</small>
+                </div>
+                
+                <button class="btn" id="calculateBtn" onclick="calculateLaserParams()">Calculate Parameters</button>
+            </div>
+            
+            <div class="panel">
+                <h2>📈 Calculated Results</h2>
+                
+                <div id="calculationError" class="error" style="display: none;"></div>
+                
+                <div id="spotInfo" style="margin-bottom: 20px; padding: 15px; background-color: #e8f4f8; border-radius: 4px;">
+                    <h3 style="margin-top: 0; font-size: 16px; color: #2c3e50;">Focal Spot Information</h3>
+                    <div class="result-item">
+                        <span class="result-label">FWHM X:</span>
+                        <span class="result-value" id="calcFwhmX">Run FWHM Analysis first</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">FWHM Y:</span>
+                        <span class="result-value" id="calcFwhmY">-</span>
+                    </div>
+                    <div class="result-item" id="calcSpotAreaRow" style="display: none;">
+                        <span class="result-label">Spot Area:</span>
+                        <span class="result-value" id="calcSpotArea">-</span>
+                    </div>
+                </div>
+                
+                <div id="laserResults" style="display: none;">
+                    <div class="calc-results">
+                        <h3>Energy & Power</h3>
+                        <div class="result-item">
+                            <span class="result-label">Pulse Energy:</span>
+                            <span class="result-value" id="resultPulseEnergy">-</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Peak Power:</span>
+                            <span class="result-value" id="resultPeakPower">-</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Average Power:</span>
+                            <span class="result-value" id="resultAvgPower">-</span>
+                        </div>
+                    </div>
+                    
+                    <div class="calc-results" style="margin-top: 15px;">
+                        <h3>Intensity & Fluence</h3>
+                        <div class="result-item">
+                            <span class="result-label">Peak Fluence:</span>
+                            <span class="result-value" id="resultPeakFluence">-</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Peak Intensity:</span>
+                            <span class="result-value" id="resultPeakIntensity">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -373,6 +555,178 @@
         let chartY = null;
         let originalImageData = null;  // Store original image for overlay
         let lastAnalysisResult = null;  // Store last analysis result for lineout visualization
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            if (tabName === 'fwhm') {
+                document.getElementById('fwhmTab').classList.add('active');
+                document.querySelectorAll('.tab')[0].classList.add('active');
+            } else if (tabName === 'calculations') {
+                document.getElementById('calculationsTab').classList.add('active');
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                updateCalculationsTabFromResults();
+            }
+        }
+        
+        // Toggle between energy and power input
+        function toggleEnergyPowerInputs() {
+            const mode = document.getElementById('energyOrPower').value;
+            const energyGroup = document.getElementById('pulseEnergyGroup');
+            const powerGroup = document.getElementById('avgPowerGroup');
+            
+            if (mode === 'energy') {
+                energyGroup.style.display = 'block';
+                powerGroup.style.display = 'none';
+            } else {
+                energyGroup.style.display = 'none';
+                powerGroup.style.display = 'block';
+            }
+        }
+        
+        // Update calculations tab with FWHM results
+        function updateCalculationsTabFromResults() {
+            if (!lastAnalysisResult) {
+                return;
+            }
+            
+            const pixelPerMicron = parseFloat(document.getElementById('pixelPerMicron').value) || 0;
+            const fwhmX = lastAnalysisResult.fwhmX;
+            const fwhmY = lastAnalysisResult.fwhmY;
+            
+            if (pixelPerMicron > 0) {
+                const fwhmXMicron = fwhmX / pixelPerMicron;
+                const fwhmYMicron = fwhmY / pixelPerMicron;
+                document.getElementById('calcFwhmX').textContent = `${fwhmX.toFixed(2)} px (${fwhmXMicron.toFixed(2)} µm)`;
+                document.getElementById('calcFwhmY').textContent = `${fwhmY.toFixed(2)} px (${fwhmYMicron.toFixed(2)} µm)`;
+            } else {
+                document.getElementById('calcFwhmX').textContent = `${fwhmX.toFixed(2)} px`;
+                document.getElementById('calcFwhmY').textContent = `${fwhmY.toFixed(2)} px`;
+            }
+        }
+        
+        // Calculate laser parameters
+        function calculateLaserParams() {
+            const errorDiv = document.getElementById('calculationError');
+            errorDiv.style.display = 'none';
+            errorDiv.textContent = '';
+            
+            // Check if FWHM analysis has been run
+            if (!lastAnalysisResult) {
+                errorDiv.textContent = 'Please run FWHM Analysis first in the FWHM Analysis tab.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            // Get input values
+            const repRate = parseFloat(document.getElementById('repRate').value);
+            const pulseDuration = parseFloat(document.getElementById('pulseDuration').value);
+            const mode = document.getElementById('energyOrPower').value;
+            const pixelPerMicron = parseFloat(document.getElementById('pixelPerMicron').value) || 0;
+            
+            // Validate inputs
+            if (!repRate || repRate <= 0) {
+                errorDiv.textContent = 'Please enter a valid repetition rate.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            if (!pulseDuration || pulseDuration <= 0) {
+                errorDiv.textContent = 'Please enter a valid pulse duration.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            if (pixelPerMicron <= 0) {
+                errorDiv.textContent = 'Please enter a valid pixel per micron value in the FWHM Analysis tab.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            let pulseEnergy;
+            if (mode === 'energy') {
+                pulseEnergy = parseFloat(document.getElementById('pulseEnergy').value);
+                if (!pulseEnergy || pulseEnergy <= 0) {
+                    errorDiv.textContent = 'Please enter a valid pulse energy.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+            } else {
+                const avgPower = parseFloat(document.getElementById('avgPower').value);
+                if (!avgPower || avgPower <= 0) {
+                    errorDiv.textContent = 'Please enter a valid average power.';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                pulseEnergy = avgPower / repRate;
+            }
+            
+            // Get FWHM in microns
+            const fwhmXMicron = lastAnalysisResult.fwhmX / pixelPerMicron;
+            const fwhmYMicron = lastAnalysisResult.fwhmY / pixelPerMicron;
+            
+            // Calculate spot area (assuming elliptical Gaussian spot)
+            // Area = π * (FWHM_x/2) * (FWHM_y/2)
+            const spotAreaMicron2 = Math.PI * (fwhmXMicron / 2) * (fwhmYMicron / 2);
+            const spotAreaCm2 = spotAreaMicron2 * 1e-8;  // Convert µm² to cm²
+            
+            // Calculate parameters
+            const peakPower = pulseEnergy / pulseDuration;
+            const avgPower = pulseEnergy * repRate;
+            const peakFluence = pulseEnergy / spotAreaCm2;  // J/cm²
+            const peakIntensity = peakPower / spotAreaCm2;  // W/cm²
+            
+            // Display spot area
+            document.getElementById('calcSpotArea').textContent = 
+                `${spotAreaMicron2.toExponential(3)} µm² (${spotAreaCm2.toExponential(3)} cm²)`;
+            document.getElementById('calcSpotAreaRow').style.display = 'flex';
+            
+            // Display results
+            document.getElementById('resultPulseEnergy').textContent = formatSI(pulseEnergy, 'J');
+            document.getElementById('resultPeakPower').textContent = formatSI(peakPower, 'W');
+            document.getElementById('resultAvgPower').textContent = formatSI(avgPower, 'W');
+            document.getElementById('resultPeakFluence').textContent = formatSI(peakFluence, 'J/cm²');
+            document.getElementById('resultPeakIntensity').textContent = formatSI(peakIntensity, 'W/cm²');
+            
+            document.getElementById('laserResults').style.display = 'block';
+        }
+        
+        // Format numbers with SI prefixes
+        function formatSI(value, unit) {
+            const prefixes = [
+                { prefix: 'T', factor: 1e12 },
+                { prefix: 'G', factor: 1e9 },
+                { prefix: 'M', factor: 1e6 },
+                { prefix: 'k', factor: 1e3 },
+                { prefix: '', factor: 1 },
+                { prefix: 'm', factor: 1e-3 },
+                { prefix: 'µ', factor: 1e-6 },
+                { prefix: 'n', factor: 1e-9 },
+                { prefix: 'p', factor: 1e-12 },
+                { prefix: 'f', factor: 1e-15 }
+            ];
+            
+            for (const p of prefixes) {
+                if (Math.abs(value) >= p.factor) {
+                    const scaledValue = value / p.factor;
+                    if (scaledValue >= 1 && scaledValue < 1000) {
+                        return `${scaledValue.toFixed(3)} ${p.prefix}${unit}`;
+                    }
+                }
+            }
+            
+            return value.toExponential(3) + ' ' + unit;
+        }
 
         // Initialize Pyodide
         async function initPyodide() {
