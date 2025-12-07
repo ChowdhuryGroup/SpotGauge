@@ -1172,20 +1172,20 @@ except Exception as e:
                 `);
                 
                 // Get results
-                const fwhmX = result.get('fwhm_x');
-                const fwhmY = result.get('fwhm_y');
-                const radiusE2X = result.get('radius_e2_x');
-                const radiusE2Y = result.get('radius_e2_y');
-                const centerX = result.get('center_x');
-                const centerY = result.get('center_y');
-                const profileX = result.get('profile_x').toJs();
-                const profileY = result.get('profile_y').toJs();
-                const croppedJet = result.get('cropped_jet').toJs();
-                const cropBounds = result.get('crop_bounds');
+                const fwhmX = result.fwhm_x;
+                const fwhmY = result.fwhm_y;
+                const radiusE2X = result.radius_e2_x;
+                const radiusE2Y = result.radius_e2_y;
+                const centerX = result.center_x;
+                const centerY = result.center_y;
+                const profileX = result.profile_x;
+                const profileY = result.profile_y;
+                const croppedJet = result.cropped_jet;
+                const cropBounds = result.crop_bounds;
                 
                 // Get background values if lineout background subtraction was applied
-                const bgX = result.has('bg_x') ? result.get('bg_x') : null;
-                const bgY = result.has('bg_y') ? result.get('bg_y') : null;
+                const bgX = ('bg_x' in result) ? result.bg_x : null;
+                const bgY = ('bg_y' in result) ? result.bg_y : null;
                 
                 // Store analysis result for lineout visualization on the preview image.
                 // Properties: centerX, centerY (peak position in pixels), 
@@ -1301,7 +1301,7 @@ except Exception as e:
             // Draw vertical lineout and intensity plot if enabled
             if (options.showVerticalLineout && options.cropBounds) {
                 const cropBounds = options.cropBounds;
-                const cropCenterX = options.centerX - cropBounds.get('x_start');
+                const cropCenterX = options.centerX - cropBounds.x_start;
                 
                 // Draw vertical lineout marker (white line)
                 ctx.strokeStyle = 'white';
@@ -1314,8 +1314,8 @@ except Exception as e:
                 // Draw intensity profile on secondary axis if profile data is available
                 if (options.profileY && options.profileY.length > 0) {
                     // Extract the portion of profileY that corresponds to the cropped region
-                    const yStart = cropBounds.get('y_start');
-                    const yEnd = cropBounds.get('y_end');
+                    const yStart = cropBounds.y_start;
+                    const yEnd = cropBounds.y_end;
                     const croppedProfileY = options.profileY.slice(yStart, yEnd);
                     
                     if (croppedProfileY.length > 1) {
