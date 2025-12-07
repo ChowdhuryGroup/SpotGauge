@@ -183,12 +183,12 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     radius_e2_y = width_e2_y / 2.0
     
     result = {
-        'fwhm_x': fwhm_x,
-        'fwhm_y': fwhm_y,
-        'radius_e2_x': radius_e2_x,
-        'radius_e2_y': radius_e2_y,
-        'center_x': center_x,
-        'center_y': center_y,
+        'fwhm_x': float(fwhm_x),
+        'fwhm_y': float(fwhm_y),
+        'radius_e2_x': float(radius_e2_x),
+        'radius_e2_y': float(radius_e2_y),
+        'center_x': int(center_x),
+        'center_y': int(center_y),
         'profile_x': profile_x.tolist(),
         'profile_y': profile_y.tolist()
     }
