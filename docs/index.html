@@ -688,6 +688,20 @@
             const fwhmX = lastAnalysisResult.fwhmX;
             const fwhmY = lastAnalysisResult.fwhmY;
             
+            // Validate fwhm values
+            if (fwhmX === undefined || fwhmX === null || isNaN(fwhmX) || !isFinite(fwhmX)) {
+                console.error('[ERROR] Invalid fwhmX in updateCalculationsTabFromResults:', fwhmX);
+                document.getElementById('calcFwhmX').textContent = 'Error: Invalid FWHM X';
+                document.getElementById('calcFwhmY').textContent = 'Error: Invalid FWHM Y';
+                return;
+            }
+            if (fwhmY === undefined || fwhmY === null || isNaN(fwhmY) || !isFinite(fwhmY)) {
+                console.error('[ERROR] Invalid fwhmY in updateCalculationsTabFromResults:', fwhmY);
+                document.getElementById('calcFwhmX').textContent = 'Error: Invalid FWHM X';
+                document.getElementById('calcFwhmY').textContent = 'Error: Invalid FWHM Y';
+                return;
+            }
+            
             if (pixelPerMicron > 0) {
                 const fwhmXMicron = fwhmX / pixelPerMicron;
                 const fwhmYMicron = fwhmY / pixelPerMicron;
@@ -1211,7 +1225,41 @@ result
                 const croppedJet = result.cropped_jet;
                 const cropBounds = result.crop_bounds;
                 
-                console.log(`FWHM X: ${fwhmX}, FWHM Y: ${fwhmY}`);
+                console.log(`[DEBUG] Extracted values from result:`);
+                console.log(`  fwhmX: ${fwhmX} (type: ${typeof fwhmX})`);
+                console.log(`  fwhmY: ${fwhmY} (type: ${typeof fwhmY})`);
+                console.log(`  radiusE2X: ${radiusE2X} (type: ${typeof radiusE2X})`);
+                console.log(`  radiusE2Y: ${radiusE2Y} (type: ${typeof radiusE2Y})`);
+                console.log(`  centerX: ${centerX} (type: ${typeof centerX})`);
+                console.log(`  centerY: ${centerY} (type: ${typeof centerY})`);
+                
+                // Validate numeric values before using .toFixed()
+                const validateNumber = (value, name) => {
+                    if (value === undefined || value === null) {
+                        console.error(`[ERROR] ${name} is ${value}`);
+                        throw new Error(`${name} is ${value}. This may indicate an issue with the image processing.`);
+                    }
+                    if (isNaN(value)) {
+                        console.error(`[ERROR] ${name} is NaN`);
+                        throw new Error(`${name} is NaN. The image may not have sufficient signal for FWHM calculation.`);
+                    }
+                    if (!isFinite(value)) {
+                        console.error(`[ERROR] ${name} is not finite: ${value}`);
+                        throw new Error(`${name} is not finite (${value}). This may indicate a calculation error.`);
+                    }
+                    console.log(`[DEBUG] ${name} validated: ${value}`);
+                    return true;
+                };
+                
+                // Validate all numeric results
+                console.log('[DEBUG] Validating numeric values...');
+                validateNumber(fwhmX, 'fwhmX');
+                validateNumber(fwhmY, 'fwhmY');
+                validateNumber(radiusE2X, 'radiusE2X');
+                validateNumber(radiusE2Y, 'radiusE2Y');
+                validateNumber(centerX, 'centerX');
+                validateNumber(centerY, 'centerY');
+                console.log('[DEBUG] All numeric values validated successfully');
                 
                 // Get background values if lineout background subtraction was applied
                 const bgX = ('bg_x' in result) ? result.bg_x : null;
@@ -1252,11 +1300,19 @@ result
                 const radiusE2XMicronRow = document.getElementById('radiusE2XMicronRow');
                 const radiusE2YMicronRow = document.getElementById('radiusE2YMicronRow');
                 
+                console.log(`[DEBUG] Checking pixel scale: pixelPerMicron=${pixelPerMicron}`);
                 if (pixelPerMicron > 0) {
                     const fwhmXMicron = fwhmX / pixelPerMicron;
                     const fwhmYMicron = fwhmY / pixelPerMicron;
                     const radiusE2XMicron = radiusE2X / pixelPerMicron;
                     const radiusE2YMicron = radiusE2Y / pixelPerMicron;
+                    
+                    console.log(`[DEBUG] Micron values calculated:`);
+                    console.log(`  fwhmXMicron: ${fwhmXMicron}`);
+                    console.log(`  fwhmYMicron: ${fwhmYMicron}`);
+                    console.log(`  radiusE2XMicron: ${radiusE2XMicron}`);
+                    console.log(`  radiusE2YMicron: ${radiusE2YMicron}`);
+                    
                     document.getElementById('fwhmXMicron').textContent = fwhmXMicron.toFixed(2) + ' µm';
                     document.getElementById('fwhmYMicron').textContent = fwhmYMicron.toFixed(2) + ' µm';
                     document.getElementById('radiusE2XMicron').textContent = radiusE2XMicron.toFixed(2) + ' µm';
@@ -1266,6 +1322,7 @@ result
                     radiusE2XMicronRow.style.display = 'flex';
                     radiusE2YMicronRow.style.display = 'flex';
                 } else {
+                    console.log('[DEBUG] No pixel scale provided, hiding micron rows');
                     fwhmXMicronRow.style.display = 'none';
                     fwhmYMicronRow.style.display = 'none';
                     radiusE2XMicronRow.style.display = 'none';
