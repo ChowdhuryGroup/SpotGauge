@@ -10,10 +10,11 @@ Visit the live application: [SpotGauge FWHM Calculator](https://chowdhurygroup.g
 
 ### FWHM Analysis
 - **Upload focal spot images** - Supports PNG, JPG, TIFF, and BMP formats
-- **Calculate FWHM** - Automatically calculates Full Width at Half Maximum in both X and Y directions
+- **Calculate Spot Size** - Automatically calculates Full Width at Half Maximum and radius at 1/e² in both X and Y directions
 - **Interactive visualization** - View intensity profiles with half-maximum reference lines
 - **Adjustable smoothing** - Control Gaussian smoothing to reduce noise
-- **1/e² radius calculation** - Calculate beam radius at 1/e² intensity level
+- **Background Subtraction** - Upload an image to subtract from focal spot image
+
 
 ### Laser Calculations
 - **Peak fluence** - Calculate energy density at the focal spot (J/cm²)
