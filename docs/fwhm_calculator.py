@@ -69,14 +69,15 @@ def calculate_width_at_threshold(profile, threshold_fraction):
     
     width = right_pos - left_pos
     
-    print(f"[DEBUG] calculate_width_at_threshold: left_pos={left_pos}, right_pos={right_pos}, width={width}")
+    print(f"[DEBUG] calculate_width_at_threshold: left_pos={left_pos}, right_pos={right_pos}, width={width}, width_type={type(width)}")
     
     # Validate result
     if np.isnan(width) or np.isinf(width) or width < 0:
         print(f"[ERROR] Invalid width calculated: width={width}")
         return 0.0
     
-    return width
+    # Ensure we return a Python float, not numpy scalar (important for Pyodide)
+    return float(width)
 
 
 def calculate_fwhm_1d(profile):
@@ -214,6 +215,10 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     
     # Validate all calculated values before creating result
     print("[DEBUG] Validating calculated values...")
+    print(f"[DEBUG] fwhm_x type: {type(fwhm_x)}, value: {fwhm_x}")
+    print(f"[DEBUG] fwhm_y type: {type(fwhm_y)}, value: {fwhm_y}")
+    print(f"[DEBUG] radius_e2_x type: {type(radius_e2_x)}, value: {radius_e2_x}")
+    print(f"[DEBUG] radius_e2_y type: {type(radius_e2_y)}, value: {radius_e2_y}")
     
     # Check for NaN or Inf values
     values_to_check = {
@@ -230,24 +235,49 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
             values_to_check[name] = 0.0
             print(f"[WARNING] Setting {name} to 0.0 as fallback")
     
+    # Explicitly convert to Python native types (important for Pyodide)
+    # Use .item() for numpy scalars to ensure proper conversion
+    try:
+        fwhm_x_val = float(values_to_check['fwhm_x'].item()) if hasattr(values_to_check['fwhm_x'], 'item') else float(values_to_check['fwhm_x'])
+        fwhm_y_val = float(values_to_check['fwhm_y'].item()) if hasattr(values_to_check['fwhm_y'], 'item') else float(values_to_check['fwhm_y'])
+        radius_e2_x_val = float(values_to_check['radius_e2_x'].item()) if hasattr(values_to_check['radius_e2_x'], 'item') else float(values_to_check['radius_e2_x'])
+        radius_e2_y_val = float(values_to_check['radius_e2_y'].item()) if hasattr(values_to_check['radius_e2_y'], 'item') else float(values_to_check['radius_e2_y'])
+        center_x_val = int(center_x.item()) if hasattr(center_x, 'item') else int(center_x)
+        center_y_val = int(center_y.item()) if hasattr(center_y, 'item') else int(center_y)
+    except Exception as e:
+        print(f"[ERROR] Type conversion error: {e}")
+        # Fallback to basic conversion
+        fwhm_x_val = float(values_to_check['fwhm_x'])
+        fwhm_y_val = float(values_to_check['fwhm_y'])
+        radius_e2_x_val = float(values_to_check['radius_e2_x'])
+        radius_e2_y_val = float(values_to_check['radius_e2_y'])
+        center_x_val = int(center_x)
+        center_y_val = int(center_y)
+    
+    print(f"[DEBUG] Converted values - fwhm_x: {fwhm_x_val} (type: {type(fwhm_x_val)})")
+    print(f"[DEBUG] Converted values - fwhm_y: {fwhm_y_val} (type: {type(fwhm_y_val)})")
+    
     result = {
-        'fwhm_x': float(values_to_check['fwhm_x']),
-        'fwhm_y': float(values_to_check['fwhm_y']),
-        'radius_e2_x': float(values_to_check['radius_e2_x']),
-        'radius_e2_y': float(values_to_check['radius_e2_y']),
-        'center_x': int(center_x),
-        'center_y': int(center_y),
+        'fwhm_x': fwhm_x_val,
+        'fwhm_y': fwhm_y_val,
+        'radius_e2_x': radius_e2_x_val,
+        'radius_e2_y': radius_e2_y_val,
+        'center_x': center_x_val,
+        'center_y': center_y_val,
         'profile_x': profile_x.tolist(),
         'profile_y': profile_y.tolist()
     }
     
     print(f"[DEBUG] Result dictionary created with keys: {list(result.keys())}")
     print(f"[DEBUG] FWHM values in result: fwhm_x={result['fwhm_x']}, fwhm_y={result['fwhm_y']}")
+    print(f"[DEBUG] Result value types: fwhm_x={type(result['fwhm_x'])}, fwhm_y={type(result['fwhm_y'])}")
     
     # Include background values if subtraction was performed
     if bg_x is not None:
-        result['bg_x'] = float(bg_x)
-        result['bg_y'] = float(bg_y)
+        bg_x_val = float(bg_x.item()) if hasattr(bg_x, 'item') else float(bg_x)
+        bg_y_val = float(bg_y.item()) if hasattr(bg_y, 'item') else float(bg_y)
+        result['bg_x'] = bg_x_val
+        result['bg_y'] = bg_y_val
     
     return result
 
