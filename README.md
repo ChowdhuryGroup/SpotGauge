@@ -95,11 +95,24 @@ npx serve docs
 
 Then open `http://localhost:8000` in your browser.
 
+## 🐛 Debugging
+
+If you encounter issues with FWHM calculations, see the [Debugging Guide](DEBUGGING.md) for:
+- How to view detailed debug output in the browser console
+- Common error messages and their solutions
+- Step-by-step troubleshooting guide
+- Testing edge cases
+
+The application provides comprehensive debug logging accessible through your browser's developer console (F12).
+
 ## 📁 Project Structure
 
 ```
 SpotGauge/
 ├── README.md
+├── DEBUGGING.md             # Debugging guide
+├── test_fwhm.py            # Main test suite
+├── test_fwhm_edge_cases.py # Edge case tests
 └── docs/
     ├── index.html           # Main web application
     └── fwhm_calculator.py   # Python FWHM calculation module

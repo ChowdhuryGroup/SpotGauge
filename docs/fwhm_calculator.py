@@ -8,6 +8,29 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 
+def to_python_scalar(value):
+    """
+    Convert numpy scalar to Python native type for Pyodide compatibility.
+    
+    Parameters
+    ----------
+    value : numeric
+        Value to convert (can be numpy scalar or Python native)
+        
+    Returns
+    -------
+    int or float
+        Python native type
+    """
+    if hasattr(value, 'item'):
+        # It's a numpy scalar, use .item() for proper conversion
+        native_val = value.item()
+        return type(native_val)(native_val)
+    else:
+        # Already a Python native type
+        return value
+
+
 def calculate_width_at_threshold(profile, threshold_fraction):
     """
     Calculate the width of a 1D intensity profile at a given threshold fraction.
@@ -26,12 +49,23 @@ def calculate_width_at_threshold(profile, threshold_fraction):
     """
     profile = np.asarray(profile, dtype=float)
     
+    print(f"[DEBUG] calculate_width_at_threshold: profile length={len(profile)}, threshold_fraction={threshold_fraction}")
+    
     # Find the maximum value and its position
     max_val = np.max(profile)
     max_idx = np.argmax(profile)
     
+    print(f"[DEBUG] calculate_width_at_threshold: max_val={max_val}, max_idx={max_idx}")
+    
+    # Validate that we have a meaningful signal
+    if max_val <= 0 or np.isnan(max_val) or np.isinf(max_val):
+        print(f"[ERROR] Invalid maximum value in profile: max_val={max_val}")
+        return 0.0
+    
     # Calculate threshold value
     threshold = max_val * threshold_fraction
+    
+    print(f"[DEBUG] calculate_width_at_threshold: threshold={threshold}")
     
     # Find the indices where the profile crosses threshold
     # Left side
@@ -57,7 +91,16 @@ def calculate_width_at_threshold(profile, threshold_fraction):
         right_pos = right_idx
     
     width = right_pos - left_pos
-    return width
+    
+    print(f"[DEBUG] calculate_width_at_threshold: left_pos={left_pos}, right_pos={right_pos}, width={width}, width_type={type(width)}")
+    
+    # Validate result
+    if np.isnan(width) or np.isinf(width) or width < 0:
+        print(f"[ERROR] Invalid width calculated: width={width}")
+        return 0.0
+    
+    # Ensure we return a Python float, not numpy scalar (important for Pyodide)
+    return float(width)
 
 
 def calculate_fwhm_1d(profile):
@@ -166,37 +209,95 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     if subtract_lineout_bg:
         bg_x = estimate_lineout_background(profile_x)
         bg_y = estimate_lineout_background(profile_y)
+        print(f"[DEBUG] Background estimation: bg_x={bg_x}, bg_y={bg_y}")
         profile_x = np.clip(profile_x - bg_x, 0, None)
         profile_y = np.clip(profile_y - bg_y, 0, None)
     
+    print(f"[DEBUG] Profile X stats: min={np.min(profile_x)}, max={np.max(profile_x)}, mean={np.mean(profile_x)}")
+    print(f"[DEBUG] Profile Y stats: min={np.min(profile_y)}, max={np.max(profile_y)}, mean={np.mean(profile_y)}")
+    
     # Calculate FWHM for each direction
+    print("[DEBUG] Calculating FWHM X...")
     fwhm_x = calculate_fwhm_1d(profile_x)
+    print(f"[DEBUG] FWHM X calculated: {fwhm_x}")
+    
+    print("[DEBUG] Calculating FWHM Y...")
     fwhm_y = calculate_fwhm_1d(profile_y)
+    print(f"[DEBUG] FWHM Y calculated: {fwhm_y}")
     
     # Calculate 1/e^2 radius - a standard laser beam measurement.
     # The 1/e^2 radius is where the intensity drops to 1/e^2 ≈ 13.5% of peak.
     # For a Gaussian beam exp(-2r²/w²), this occurs at r = w (the beam radius).
     e2_threshold = 1.0 / (np.e ** 2)  # ≈ 0.1353
+    print(f"[DEBUG] Calculating 1/e² widths with threshold={e2_threshold}...")
     width_e2_x = calculate_width_at_threshold(profile_x, e2_threshold)
     width_e2_y = calculate_width_at_threshold(profile_y, e2_threshold)
     radius_e2_x = width_e2_x / 2.0
     radius_e2_y = width_e2_y / 2.0
+    print(f"[DEBUG] 1/e² radius X: {radius_e2_x}, Y: {radius_e2_y}")
+    
+    # Validate all calculated values before creating result
+    print("[DEBUG] Validating calculated values...")
+    print(f"[DEBUG] fwhm_x type: {type(fwhm_x)}, value: {fwhm_x}")
+    print(f"[DEBUG] fwhm_y type: {type(fwhm_y)}, value: {fwhm_y}")
+    print(f"[DEBUG] radius_e2_x type: {type(radius_e2_x)}, value: {radius_e2_x}")
+    print(f"[DEBUG] radius_e2_y type: {type(radius_e2_y)}, value: {radius_e2_y}")
+    
+    # Check for NaN or Inf values
+    values_to_check = {
+        'fwhm_x': fwhm_x,
+        'fwhm_y': fwhm_y,
+        'radius_e2_x': radius_e2_x,
+        'radius_e2_y': radius_e2_y
+    }
+    
+    for name, value in values_to_check.items():
+        if np.isnan(value) or np.isinf(value):
+            print(f"[ERROR] Invalid value detected: {name}={value}")
+            # Set to 0 as a safe fallback
+            values_to_check[name] = 0.0
+            print(f"[WARNING] Setting {name} to 0.0 as fallback")
+    
+    # Explicitly convert to Python native types (important for Pyodide)
+    try:
+        fwhm_x_val = float(to_python_scalar(values_to_check['fwhm_x']))
+        fwhm_y_val = float(to_python_scalar(values_to_check['fwhm_y']))
+        radius_e2_x_val = float(to_python_scalar(values_to_check['radius_e2_x']))
+        radius_e2_y_val = float(to_python_scalar(values_to_check['radius_e2_y']))
+        center_x_val = int(to_python_scalar(center_x))
+        center_y_val = int(to_python_scalar(center_y))
+    except Exception as e:
+        print(f"[ERROR] Type conversion error: {e}")
+        # Fallback to basic conversion
+        fwhm_x_val = float(values_to_check['fwhm_x'])
+        fwhm_y_val = float(values_to_check['fwhm_y'])
+        radius_e2_x_val = float(values_to_check['radius_e2_x'])
+        radius_e2_y_val = float(values_to_check['radius_e2_y'])
+        center_x_val = int(center_x)
+        center_y_val = int(center_y)
+    
+    print(f"[DEBUG] Converted values - fwhm_x: {fwhm_x_val} (type: {type(fwhm_x_val)})")
+    print(f"[DEBUG] Converted values - fwhm_y: {fwhm_y_val} (type: {type(fwhm_y_val)})")
     
     result = {
-        'fwhm_x': float(fwhm_x),
-        'fwhm_y': float(fwhm_y),
-        'radius_e2_x': float(radius_e2_x),
-        'radius_e2_y': float(radius_e2_y),
-        'center_x': int(center_x),
-        'center_y': int(center_y),
+        'fwhm_x': fwhm_x_val,
+        'fwhm_y': fwhm_y_val,
+        'radius_e2_x': radius_e2_x_val,
+        'radius_e2_y': radius_e2_y_val,
+        'center_x': center_x_val,
+        'center_y': center_y_val,
         'profile_x': profile_x.tolist(),
         'profile_y': profile_y.tolist()
     }
     
+    print(f"[DEBUG] Result dictionary created with keys: {list(result.keys())}")
+    print(f"[DEBUG] FWHM values in result: fwhm_x={result['fwhm_x']}, fwhm_y={result['fwhm_y']}")
+    print(f"[DEBUG] Result value types: fwhm_x={type(result['fwhm_x'])}, fwhm_y={type(result['fwhm_y'])}")
+    
     # Include background values if subtraction was performed
     if bg_x is not None:
-        result['bg_x'] = float(bg_x)
-        result['bg_y'] = float(bg_y)
+        result['bg_x'] = float(to_python_scalar(bg_x))
+        result['bg_y'] = float(to_python_scalar(bg_y))
     
     return result
 
