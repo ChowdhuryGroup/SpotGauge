@@ -910,7 +910,10 @@
             const status = document.getElementById('status');
             try {
                 status.textContent = 'Loading Python environment...';
-                pyodide = await loadPyodide();
+                pyodide = await loadPyodide({
+                    stdout: (text) => console.log('[PYTHON]', text),
+                    stderr: (text) => console.error('[PYTHON ERROR]', text)
+                });
                 
                 status.textContent = 'Loading scientific packages...';
                 await pyodide.loadPackage(['numpy', 'scipy', 'pillow']);
