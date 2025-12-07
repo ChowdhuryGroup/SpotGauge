@@ -1143,31 +1143,59 @@
                     pyodide.globals.set('has_background', false);
                 }
                 
+                console.log('Starting image analysis...');
                 const result = await pyodide.runPythonAsync(`
 import numpy as np
 from PIL import Image
 import io
 
+print("Loading image from bytes...")
 # Load image from bytes using PIL to preserve bit depth
 img_file = io.BytesIO(bytes(img_bytes.to_py()))
 img_pil = Image.open(img_file)
+print(f"Image loaded: {img_pil.mode}, size: {img_pil.size}")
 
 # Convert to numpy array - preserves original bit depth
 data = np.array(img_pil, dtype=np.float64)
+print(f"Image array shape: {data.shape}, dtype: {data.dtype}")
 
 # Load background if available
 if has_background:
+    print("Loading background image...")
     bg_file = io.BytesIO(bytes(bg_bytes.to_py()))
     bg_pil = Image.open(bg_file)
     bg = np.array(bg_pil, dtype=np.float64)
+    print(f"Background array shape: {bg.shape}")
 else:
     bg = None
+    print("No background image provided")
 
 # Process and calculate FWHM and return result
+print("Processing image data...")
 result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg)
+print(f"Result type: {type(result)}")
+print(f"Result keys: {list(result.keys())}")
+print(f"FWHM X: {result['fwhm_x']}, FWHM Y: {result['fwhm_y']}")
 result
                 `);
                 
+                console.log('Pyodide result received:', result);
+                console.log('Result type:', typeof result);
+                console.log('Result keys:', Object.keys(result));
+                
+                // Validate result object has required properties
+                if (!result || typeof result !== 'object') {
+                    throw new Error('Invalid result object returned from Python');
+                }
+                
+                const requiredKeys = ['fwhm_x', 'fwhm_y', 'radius_e2_x', 'radius_e2_y', 'center_x', 'center_y', 'profile_x', 'profile_y', 'cropped_jet', 'crop_bounds'];
+                for (const key of requiredKeys) {
+                    if (!(key in result)) {
+                        throw new Error(`Missing required key '${key}' in result object. Available keys: ${Object.keys(result).join(', ')}`);
+                    }
+                }
+                
+                console.log('Extracting results...');
                 // Get results
                 const fwhmX = result.fwhm_x;
                 const fwhmY = result.fwhm_y;
@@ -1180,6 +1208,8 @@ result
                 const croppedJet = result.cropped_jet;
                 const cropBounds = result.crop_bounds;
                 
+                console.log(`FWHM X: ${fwhmX}, FWHM Y: ${fwhmY}`);
+                
                 // Get background values if lineout background subtraction was applied
                 const bgX = ('bg_x' in result) ? result.bg_x : null;
                 const bgY = ('bg_y' in result) ? result.bg_y : null;
@@ -1190,6 +1220,7 @@ result
                 // cropBounds (object with x_start, x_end, y_start, y_end)
                 lastAnalysisResult = { centerX, centerY, fwhmX, fwhmY, radiusE2X, radiusE2Y, cropBounds };
                 
+                console.log('Displaying results in UI...');
                 // Display results in pixels
                 document.getElementById('fwhmX').textContent = fwhmX.toFixed(2) + ' px';
                 document.getElementById('fwhmY').textContent = fwhmY.toFixed(2) + ' px';
@@ -1197,6 +1228,7 @@ result
                 document.getElementById('radiusE2Y').textContent = radiusE2Y.toFixed(2) + ' px';
                 document.getElementById('centerX').textContent = centerX + ' px';
                 document.getElementById('centerY').textContent = centerY + ' px';
+                console.log('Results displayed successfully');
                 
                 // Display background values if lineout background subtraction was applied
                 const bgXRow = document.getElementById('bgXRow');
@@ -1239,6 +1271,7 @@ result
                 
                 results.style.display = 'block';
                 
+                console.log('Updating lineout visualization...');
                 // Update lineout visualization on the image
                 updateLineoutVisualization();
                 
@@ -1246,6 +1279,7 @@ result
                 const showScaleBar = document.getElementById('showScaleBar').checked;
                 const showVerticalLineout = document.getElementById('showVerticalLineout').checked;
                 
+                console.log('Displaying cropped focal spot...');
                 // Display cropped focal spot with jet colormap and options
                 displayCroppedFocalSpot(croppedJet, {
                     showScaleBar,
@@ -1257,13 +1291,16 @@ result
                     profileY
                 });
                 
+                console.log('Drawing charts...');
                 // Draw charts
                 drawChart('chartX', 'chartContainerX', profileX, fwhmX, centerX, 'X Profile', bgX);
                 drawChart('chartY', 'chartContainerY', profileY, fwhmY, centerY, 'Y Profile', bgY);
                 
+                console.log('Analysis complete!');
             } catch (error) {
                 showError('Error calculating FWHM: ' + error.message);
-                console.error(error);
+                console.error('Full error:', error);
+                console.error('Stack trace:', error.stack);
             } finally {
                 loading.classList.remove('active');
             }
