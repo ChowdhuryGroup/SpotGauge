@@ -77,7 +77,36 @@ def calculate_fwhm_1d(profile):
     return calculate_width_at_threshold(profile, 0.5)
 
 
-def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
+def estimate_lineout_background(profile, edge_fraction=0.1):
+    """
+    Estimate background level from the edges of a lineout profile.
+    
+    Parameters
+    ----------
+    profile : array-like
+        1D array of intensity values
+    edge_fraction : float, optional
+        Fraction of profile length to use from each edge (default: 0.1)
+        
+    Returns
+    -------
+    float
+        Estimated background level (minimum of edge averages)
+    """
+    profile = np.asarray(profile, dtype=float)
+    n = len(profile)
+    edge_size = max(1, int(n * edge_fraction))
+    
+    # Get average of left and right edges
+    left_edge = np.mean(profile[:edge_size])
+    right_edge = np.mean(profile[-edge_size:])
+    
+    # Use minimum of the two edges as background estimate
+    # This is conservative and avoids overestimating background
+    return min(left_edge, right_edge)
+
+
+def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout_bg=False):
     """
     Calculate the FWHM of a 2D focal spot image in both X and Y directions.
     
@@ -90,6 +119,8 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
     lineout_width : int, optional
         Width of the lineout in pixels (default: 1). If greater than 1,
         the profile is averaged over multiple adjacent rows/columns.
+    subtract_lineout_bg : bool, optional
+        If True, estimate and subtract background from lineout profiles (default: False)
         
     Returns
     -------
@@ -129,6 +160,15 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
     x_end = min(width, center_x + half_width + 1)
     profile_y = np.mean(smoothed[:, x_start:x_end], axis=1)
     
+    # Subtract lineout background if requested
+    bg_x = None
+    bg_y = None
+    if subtract_lineout_bg:
+        bg_x = estimate_lineout_background(profile_x)
+        bg_y = estimate_lineout_background(profile_y)
+        profile_x = np.clip(profile_x - bg_x, 0, None)
+        profile_y = np.clip(profile_y - bg_y, 0, None)
+    
     # Calculate FWHM for each direction
     fwhm_x = calculate_fwhm_1d(profile_x)
     fwhm_y = calculate_fwhm_1d(profile_y)
@@ -142,7 +182,7 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
     radius_e2_x = width_e2_x / 2.0
     radius_e2_y = width_e2_y / 2.0
     
-    return {
+    result = {
         'fwhm_x': fwhm_x,
         'fwhm_y': fwhm_y,
         'radius_e2_x': radius_e2_x,
@@ -152,6 +192,13 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1):
         'profile_x': profile_x.tolist(),
         'profile_y': profile_y.tolist()
     }
+    
+    # Include background values if subtraction was performed
+    if bg_x is not None:
+        result['bg_x'] = float(bg_x)
+        result['bg_y'] = float(bg_y)
+    
+    return result
 
 
 def apply_jet_colormap(data):
@@ -181,7 +228,7 @@ def apply_jet_colormap(data):
     return rgb.astype(np.uint8).tolist()
 
 
-def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None):
+def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None, subtract_lineout_bg=False):
     """
     Process raw image data and calculate FWHM.
     
@@ -199,6 +246,9 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
         Width of the lineout in pixels (default: 1)
     crop_size : int, optional
         Size of the cropped focal spot region (default: None, auto-calculated based on FWHM)
+    subtract_lineout_bg : bool, optional
+        If True and no background image is provided, estimate and subtract background 
+        from lineout profiles (default: False)
         
     Returns
     -------
@@ -259,7 +309,10 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
         # Subtract background and clip to non-negative values
         image = np.clip(image - bg, 0, None)
     
-    result = calculate_fwhm_2d(image, smooth_sigma, lineout_width)
+    # Apply lineout background subtraction only if requested AND no background image was provided
+    apply_lineout_bg_subtraction = subtract_lineout_bg and (background is None)
+    
+    result = calculate_fwhm_2d(image, smooth_sigma, lineout_width, subtract_lineout_bg=apply_lineout_bg_subtraction)
     
     # Create cropped focal spot with jet colormap
     center_x = result['center_x']

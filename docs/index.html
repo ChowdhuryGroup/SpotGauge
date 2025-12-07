@@ -358,6 +358,13 @@
                         Show vertical lineout on cropped image
                     </label>
                 </div>
+                
+                <div class="checkbox-group" style="margin-top: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="subtractLineoutBackground">
+                        Subtract background from lineout (only if no background image uploaded)
+                    </label>
+                </div>
             </div>
             
             <div class="background-section">
@@ -426,6 +433,14 @@
                 <div class="result-item">
                     <span class="result-label">Peak Y:</span>
                     <span class="result-value" id="centerY">-</span>
+                </div>
+                <div class="result-item" id="bgXRow" style="display: none;">
+                    <span class="result-label">Background X (subtracted):</span>
+                    <span class="result-value" id="bgX">-</span>
+                </div>
+                <div class="result-item" id="bgYRow" style="display: none;">
+                    <span class="result-label">Background Y (subtracted):</span>
+                    <span class="result-value" id="bgY">-</span>
                 </div>
             </div>
             
@@ -1092,6 +1107,7 @@
                 const smoothSigma = parseFloat(document.getElementById('smoothSigma').value) || 1.0;
                 const lineoutWidth = parseInt(document.getElementById('lineoutWidth').value) || 1;
                 const pixelPerMicron = parseFloat(document.getElementById('pixelPerMicron').value) || 0;
+                const subtractLineoutBackground = document.getElementById('subtractLineoutBackground').checked;
                 
                 // Convert image data to numpy array
                 const width = imageData.width;
@@ -1104,6 +1120,7 @@
                 pyodide.globals.set('img_data', Array.from(data));
                 pyodide.globals.set('smooth_sigma', smoothSigma);
                 pyodide.globals.set('lineout_width', lineoutWidth);
+                pyodide.globals.set('subtract_lineout_bg', subtractLineoutBackground);
                 
                 // Pass background data if available
                 if (bgImageData) {
@@ -1128,7 +1145,7 @@ else:
     bg = None
 
 # Process and calculate FWHM
-result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width)
+result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg)
 result
                 `);
                 
@@ -1144,6 +1161,10 @@ result
                 const croppedJet = result.get('cropped_jet').toJs();
                 const cropBounds = result.get('crop_bounds');
                 
+                // Get background values if lineout background subtraction was applied
+                const bgX = result.has('bg_x') ? result.get('bg_x') : null;
+                const bgY = result.has('bg_y') ? result.get('bg_y') : null;
+                
                 // Store analysis result for lineout visualization on the preview image.
                 // Properties: centerX, centerY (peak position in pixels), 
                 // fwhmX, fwhmY (FWHM values), radiusE2X, radiusE2Y (1/e² radius values),
@@ -1157,6 +1178,19 @@ result
                 document.getElementById('radiusE2Y').textContent = radiusE2Y.toFixed(2) + ' px';
                 document.getElementById('centerX').textContent = centerX + ' px';
                 document.getElementById('centerY').textContent = centerY + ' px';
+                
+                // Display background values if lineout background subtraction was applied
+                const bgXRow = document.getElementById('bgXRow');
+                const bgYRow = document.getElementById('bgYRow');
+                if (bgX !== null && bgY !== null) {
+                    document.getElementById('bgX').textContent = bgX.toFixed(2);
+                    document.getElementById('bgY').textContent = bgY.toFixed(2);
+                    bgXRow.style.display = 'flex';
+                    bgYRow.style.display = 'flex';
+                } else {
+                    bgXRow.style.display = 'none';
+                    bgYRow.style.display = 'none';
+                }
                 
                 // Display results in microns if scale is provided
                 const fwhmXMicronRow = document.getElementById('fwhmXMicronRow');
@@ -1205,8 +1239,8 @@ result
                 });
                 
                 // Draw charts
-                drawChart('chartX', 'chartContainerX', profileX, fwhmX, centerX, 'X Profile');
-                drawChart('chartY', 'chartContainerY', profileY, fwhmY, centerY, 'Y Profile');
+                drawChart('chartX', 'chartContainerX', profileX, fwhmX, centerX, 'X Profile', bgX);
+                drawChart('chartY', 'chartContainerY', profileY, fwhmY, centerY, 'Y Profile', bgY);
                 
             } catch (error) {
                 showError('Error calculating FWHM: ' + error.message);
@@ -1359,7 +1393,7 @@ result
             }
         }
 
-        function drawChart(canvasId, containerId, profile, fwhm, center, title) {
+        function drawChart(canvasId, containerId, profile, fwhm, center, title, background = null) {
             const container = document.getElementById(containerId);
             container.style.display = 'block';
             
@@ -1379,29 +1413,46 @@ result
             const labels = profile.map((_, i) => i);
             const halfMaxLine = profile.map(() => halfMax);
             
+            // Create datasets array
+            const datasets = [
+                {
+                    label: title,
+                    data: profile,
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                },
+                {
+                    label: 'Half Maximum',
+                    data: halfMaxLine,
+                    borderColor: '#e74c3c',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0
+                }
+            ];
+            
+            // Add background line if background subtraction was applied
+            if (background !== null) {
+                const bgLine = profile.map(() => background);
+                datasets.push({
+                    label: 'Subtracted Background',
+                    data: bgLine,
+                    borderColor: '#95a5a6',
+                    borderDash: [10, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    borderWidth: 2
+                });
+            }
+            
             const chart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [
-                        {
-                            label: title,
-                            data: profile,
-                            borderColor: '#3498db',
-                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 0
-                        },
-                        {
-                            label: 'Half Maximum',
-                            data: halfMaxLine,
-                            borderColor: '#e74c3c',
-                            borderDash: [5, 5],
-                            fill: false,
-                            pointRadius: 0
-                        }
-                    ]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,

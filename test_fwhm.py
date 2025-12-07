@@ -285,6 +285,85 @@ def test_radius_e2():
     print("  ✓ PASSED\n")
 
 
+def test_lineout_background_subtraction():
+    """Test lineout background subtraction feature."""
+    # Create a Gaussian spot with a constant background
+    sigma = 12.0
+    expected_fwhm = 2.355 * sigma  # ~28.26
+    background_level = 50.0
+    
+    y, x = np.mgrid[0:100, 0:100]
+    center = 50
+    gaussian_2d = np.exp(-((x - center) ** 2 + (y - center) ** 2) / (2 * sigma ** 2))
+    
+    # Create image with background
+    image_with_bg = gaussian_2d * 200 + background_level
+    
+    # Test WITHOUT lineout background subtraction
+    result_no_sub = process_image_data(image_with_bg, smooth_sigma=0, subtract_lineout_bg=False)
+    
+    # Test WITH lineout background subtraction (no background image)
+    result_with_sub = process_image_data(image_with_bg, smooth_sigma=0, subtract_lineout_bg=True)
+    
+    print(f"Lineout Background Subtraction test:")
+    print(f"  Expected FWHM: ~{expected_fwhm:.2f}")
+    print(f"  Without lineout bg subtraction - FWHM X: {result_no_sub['fwhm_x']:.2f}, FWHM Y: {result_no_sub['fwhm_y']:.2f}")
+    print(f"  With lineout bg subtraction - FWHM X: {result_with_sub['fwhm_x']:.2f}, FWHM Y: {result_with_sub['fwhm_y']:.2f}")
+    
+    # With background subtraction, FWHM should be closer to expected
+    error_no_sub = abs(result_no_sub['fwhm_x'] - expected_fwhm)
+    error_with_sub = abs(result_with_sub['fwhm_x'] - expected_fwhm)
+    
+    print(f"  Error without subtraction: {error_no_sub:.2f}")
+    print(f"  Error with subtraction: {error_with_sub:.2f}")
+    
+    # Verify background values are returned
+    assert 'bg_x' not in result_no_sub, "Background should not be in result when not subtracting"
+    assert 'bg_y' not in result_no_sub, "Background should not be in result when not subtracting"
+    assert 'bg_x' in result_with_sub, "Background X should be in result when subtracting"
+    assert 'bg_y' in result_with_sub, "Background Y should be in result when subtracting"
+    
+    print(f"  Calculated background X: {result_with_sub['bg_x']:.2f}")
+    print(f"  Calculated background Y: {result_with_sub['bg_y']:.2f}")
+    
+    # Background should be close to the actual background level
+    assert abs(result_with_sub['bg_x'] - background_level) < 10.0, "Background X should be close to actual background"
+    assert abs(result_with_sub['bg_y'] - background_level) < 10.0, "Background Y should be close to actual background"
+    
+    # Lineout background subtraction should improve the result
+    assert error_with_sub <= error_no_sub + 1.0, "Lineout bg subtraction should not make result significantly worse"
+    print("  ✓ PASSED\n")
+
+
+def test_lineout_bg_disabled_when_background_image():
+    """Test that lineout background subtraction is disabled when background image is provided."""
+    sigma = 12.0
+    background_level = 50.0
+    
+    y, x = np.mgrid[0:80, 0:80]
+    center = 40
+    gaussian_2d = np.exp(-((x - center) ** 2 + (y - center) ** 2) / (2 * sigma ** 2))
+    
+    # Create image with background
+    image_with_bg = gaussian_2d * 200 + background_level
+    
+    # Create background image
+    background = np.ones((80, 80)) * background_level
+    
+    # Call with both background image AND lineout bg subtraction flag
+    # Lineout subtraction should NOT be applied (background image takes precedence)
+    result_bg_only = process_image_data(image_with_bg, smooth_sigma=0, background=background, subtract_lineout_bg=False)
+    result_bg_with_flag = process_image_data(image_with_bg, smooth_sigma=0, background=background, subtract_lineout_bg=True)
+    
+    print(f"Lineout BG disabled when background image provided test:")
+    print(f"  With background image only - FWHM X: {result_bg_only['fwhm_x']:.2f}")
+    print(f"  With background image + lineout flag - FWHM X: {result_bg_with_flag['fwhm_x']:.2f}")
+    
+    # Results should be the same (lineout bg subtraction should not be applied when background image exists)
+    assert abs(result_bg_only['fwhm_x'] - result_bg_with_flag['fwhm_x']) < 0.1, "Results should be identical when background image is provided"
+    print("  ✓ PASSED\n")
+
+
 if __name__ == '__main__':
     print("=" * 50)
     print("FWHM Calculator Tests")
@@ -299,6 +378,8 @@ if __name__ == '__main__':
     test_background_subtraction()
     test_background_subtraction_rgba()
     test_background_dimension_mismatch()
+    test_lineout_background_subtraction()
+    test_lineout_bg_disabled_when_background_image()
     
     print("=" * 50)
     print("All tests passed! ✓")
