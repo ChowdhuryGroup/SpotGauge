@@ -1,6 +1,6 @@
 # SpotGauge
 
-Toolkit to analyze focal spots - Calculate FWHM (Full Width at Half Maximum) and laser parameters directly in your browser.
+Toolkit to analyze focal spots - Calculate Spot Size (FWHM or 1/e^2) and laser parameters directly in your browser.
 
 ## 🚀 Live Demo
 
@@ -66,11 +66,11 @@ For a Gaussian beam, the relationship between FWHM and 1/e² beam radius (w₀) 
 Using the 1/e² beam radius:
 - **Spot Area**: A = π × w₀_x × w₀_y (area at 1/e² intensity level)
 - **Pulse Energy**: E_pulse = P_avg / f_rep (if using average power mode)
-- **Peak Power**: P_peak = E_pulse / τ_pulse
+- **Peak Power**: P_peak = 0.94 × E_pulse / τ_pulse
 - **Average Power**: P_avg = E_pulse × f_rep
 - **Peak Fluence**: F_peak = E_pulse / A (J/cm²)
-- **Peak Intensity**: I_peak = 0.94 × P_peak / A (W/cm²)
-  - The 0.94 factor accounts for the Gaussian beam profile
+- **Peak Intensity**: I_peak =  P_peak / A (W/cm²)
+  - The 0.94 factor accounts for the Gaussian Temporal beam profile
 
 Where:
 - f_rep = repetition rate (Hz)
