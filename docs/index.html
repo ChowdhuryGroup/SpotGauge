@@ -1190,7 +1190,7 @@ except Exception as e:
                 // Store analysis result for lineout visualization on the preview image.
                 // Properties: centerX, centerY (peak position in pixels), 
                 // fwhmX, fwhmY (FWHM values), radiusE2X, radiusE2Y (1/e² radius values),
-                // cropBounds (Pyodide Map with x_start, x_end, y_start, y_end)
+                // cropBounds (object with x_start, x_end, y_start, y_end)
                 lastAnalysisResult = { centerX, centerY, fwhmX, fwhmY, radiusE2X, radiusE2Y, cropBounds };
                 
                 // Display results in pixels
