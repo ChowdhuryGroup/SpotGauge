@@ -821,7 +821,7 @@
             
             // Calculate parameters
             // The factor of 0.94 accounts for the actual peak intensity for a Gaussian beam
-            const peakPower = 0.94 pulseEnergy / pulseDuration;
+            const peakPower = 0.94 * pulseEnergy / pulseDuration;
             const avgPower = pulseEnergy * repRate;
             
             // Peak fluence at 1/e² (using corrected area)
