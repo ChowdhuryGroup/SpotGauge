@@ -24,7 +24,8 @@ def to_python_scalar(value):
     """
     if hasattr(value, 'item'):
         # It's a numpy scalar, use .item() for proper conversion
-        return type(value.item())(value.item())
+        native_val = value.item()
+        return type(native_val)(native_val)
     else:
         # Already a Python native type
         return value
