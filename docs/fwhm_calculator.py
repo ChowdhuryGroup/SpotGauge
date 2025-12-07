@@ -8,6 +8,28 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 
+def to_python_scalar(value):
+    """
+    Convert numpy scalar to Python native type for Pyodide compatibility.
+    
+    Parameters
+    ----------
+    value : numeric
+        Value to convert (can be numpy scalar or Python native)
+        
+    Returns
+    -------
+    int or float
+        Python native type
+    """
+    if hasattr(value, 'item'):
+        # It's a numpy scalar, use .item() for proper conversion
+        return type(value.item())(value.item())
+    else:
+        # Already a Python native type
+        return value
+
+
 def calculate_width_at_threshold(profile, threshold_fraction):
     """
     Calculate the width of a 1D intensity profile at a given threshold fraction.
@@ -236,14 +258,13 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
             print(f"[WARNING] Setting {name} to 0.0 as fallback")
     
     # Explicitly convert to Python native types (important for Pyodide)
-    # Use .item() for numpy scalars to ensure proper conversion
     try:
-        fwhm_x_val = float(values_to_check['fwhm_x'].item()) if hasattr(values_to_check['fwhm_x'], 'item') else float(values_to_check['fwhm_x'])
-        fwhm_y_val = float(values_to_check['fwhm_y'].item()) if hasattr(values_to_check['fwhm_y'], 'item') else float(values_to_check['fwhm_y'])
-        radius_e2_x_val = float(values_to_check['radius_e2_x'].item()) if hasattr(values_to_check['radius_e2_x'], 'item') else float(values_to_check['radius_e2_x'])
-        radius_e2_y_val = float(values_to_check['radius_e2_y'].item()) if hasattr(values_to_check['radius_e2_y'], 'item') else float(values_to_check['radius_e2_y'])
-        center_x_val = int(center_x.item()) if hasattr(center_x, 'item') else int(center_x)
-        center_y_val = int(center_y.item()) if hasattr(center_y, 'item') else int(center_y)
+        fwhm_x_val = float(to_python_scalar(values_to_check['fwhm_x']))
+        fwhm_y_val = float(to_python_scalar(values_to_check['fwhm_y']))
+        radius_e2_x_val = float(to_python_scalar(values_to_check['radius_e2_x']))
+        radius_e2_y_val = float(to_python_scalar(values_to_check['radius_e2_y']))
+        center_x_val = int(to_python_scalar(center_x))
+        center_y_val = int(to_python_scalar(center_y))
     except Exception as e:
         print(f"[ERROR] Type conversion error: {e}")
         # Fallback to basic conversion
@@ -274,10 +295,8 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     
     # Include background values if subtraction was performed
     if bg_x is not None:
-        bg_x_val = float(bg_x.item()) if hasattr(bg_x, 'item') else float(bg_x)
-        bg_y_val = float(bg_y.item()) if hasattr(bg_y, 'item') else float(bg_y)
-        result['bg_x'] = bg_x_val
-        result['bg_y'] = bg_y_val
+        result['bg_x'] = float(to_python_scalar(bg_x))
+        result['bg_y'] = float(to_python_scalar(bg_y))
     
     return result
 
