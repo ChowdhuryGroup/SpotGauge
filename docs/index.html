@@ -1144,7 +1144,7 @@
                 }
                 
                 console.log('Starting image analysis...');
-                const resultProxy = await pyodide.runPythonAsync(`
+                const pythonResult = await pyodide.runPythonAsync(`
 import numpy as np
 from PIL import Image
 import io
@@ -1180,7 +1180,7 @@ result
                 `);
                 
                 // Convert Pyodide proxy to JavaScript object if necessary
-                const result = resultProxy.toJs ? resultProxy.toJs({ dict_converter: Object.fromEntries }) : resultProxy;
+                const result = pythonResult.toJs ? pythonResult.toJs({ dict_converter: Object.fromEntries }) : pythonResult;
                 
                 console.log('Pyodide result received:', result);
                 console.log('Result type:', typeof result);
