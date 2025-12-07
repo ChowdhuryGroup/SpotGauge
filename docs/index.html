@@ -1148,27 +1148,23 @@ import numpy as np
 from PIL import Image
 import io
 
-try:
-    # Load image from bytes using PIL to preserve bit depth
-    img_file = io.BytesIO(bytes(img_bytes.to_py()))
-    img_pil = Image.open(img_file)
-    
-    # Convert to numpy array - preserves original bit depth
-    data = np.array(img_pil, dtype=np.float64)
-    
-    # Load background if available
-    if has_background:
-        bg_file = io.BytesIO(bytes(bg_bytes.to_py()))
-        bg_pil = Image.open(bg_file)
-        bg = np.array(bg_pil, dtype=np.float64)
-    else:
-        bg = None
-    
-    # Process and calculate FWHM
-    result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg)
-    result
-except Exception as e:
-    raise Exception(f"Error processing image: {str(e)}")
+# Load image from bytes using PIL to preserve bit depth
+img_file = io.BytesIO(bytes(img_bytes.to_py()))
+img_pil = Image.open(img_file)
+
+# Convert to numpy array - preserves original bit depth
+data = np.array(img_pil, dtype=np.float64)
+
+# Load background if available
+if has_background:
+    bg_file = io.BytesIO(bytes(bg_bytes.to_py()))
+    bg_pil = Image.open(bg_file)
+    bg = np.array(bg_pil, dtype=np.float64)
+else:
+    bg = None
+
+# Process and calculate FWHM
+process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg)
                 `);
                 
                 // Get results
