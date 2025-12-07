@@ -826,8 +826,8 @@
                 const spotAreaMicron2 = Math.PI * w0XMicron * w0YMicron;
                 const spotAreaCm2 = spotAreaMicron2 * 1e-8;  // Convert µm² to cm²
                 
-                // Backwards: E_pulse = F_peak * A
-                pulseEnergy = inputFluence * spotAreaCm2;
+                // Backwards: E_pulse = F_peak * A / 2
+                pulseEnergy = inputFluence * spotAreaCm2 / 2;
             }
             
             // Calculate spot area at 1/e² using corrected formula
@@ -837,14 +837,14 @@
             
             // Calculate parameters
             // The factor of 0.94 accounts for the actual peak intensity for a Gaussian beam
-            const peakPower = 0.94 * pulseEnergy / pulseDuration;
+            const peakPower = Math.sqrt((4 * Math.log(2)) / Math.PI) * pulseEnergy / pulseDuration;
             const avgPower = pulseEnergy * repRate;
             
-            // Peak fluence at 1/e² (using corrected area)
-            const peakFluence = pulseEnergy / spotAreaCm2;  // J/cm²
+            // Peak fluence at 1/e² (using area from 1/e^2 - pi*w0x*w0y)
+            const peakFluence = 2 * pulseEnergy / spotAreaCm2;  // J/cm²
             
             // Peak intensity at 1/e²
-            const peakIntensity =  (peakPower / spotAreaCm2);  // W/cm²
+            const peakIntensity =  (2 * peakPower / spotAreaCm2);  // W/cm²
             
             // Display spot area and beam parameters
             const conversionFactor = Math.sqrt(2 * Math.log(2));
