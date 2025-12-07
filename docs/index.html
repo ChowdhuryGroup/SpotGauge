@@ -1163,8 +1163,9 @@ if has_background:
 else:
     bg = None
 
-# Process and calculate FWHM
-process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg)
+# Process and calculate FWHM and return result
+result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg)
+result
                 `);
                 
                 // Get results
