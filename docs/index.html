@@ -311,7 +311,7 @@
 </head>
 <body>
     <h1>🔬 SpotGauge - Focal Spot Analysis</h1>
-    <p class="description">Upload a focal spot image to calculate FWHM and laser parameters - Conrad Kuz 2025-12-05</p>
+    <p class="description">Upload a focal spot image to calculate spot size and fluence parameters - Conrad Kuz 2025-12-05</p>
     
     <div id="status">Loading Python environment...</div>
     
@@ -362,7 +362,7 @@
                 <div class="checkbox-group" style="margin-top: 10px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
                         <input type="checkbox" id="subtractLineoutBackground">
-                        Subtract background from lineout (only if no background image uploaded)
+                        Calculate background from lineout (only if no background image uploaded)
                     </label>
                 </div>
             </div>
@@ -546,6 +546,11 @@
                 </div>
                 
                 <button class="btn" id="calculateBtn" onclick="calculateLaserParams()">Calculate Parameters</button>
+                <a href="Gaussian_Beam_Cheat_Sheet-7.pdf" download>
+                    <button class="btn" id="downloadPDF" style="margin-top: 10px;">
+                      📥 Download Calculation Guide (PDF)
+                    </button>
+                </a>
             </div>
             
             <div class="panel">
