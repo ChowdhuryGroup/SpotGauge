@@ -435,11 +435,11 @@
                     <span class="result-value" id="centerY">-</span>
                 </div>
                 <div class="result-item" id="bgXRow" style="display: none;">
-                    <span class="result-label">Background X (subtracted):</span>
+                    <span class="result-label">Background X (measured):</span>
                     <span class="result-value" id="bgX">-</span>
                 </div>
                 <div class="result-item" id="bgYRow" style="display: none;">
-                    <span class="result-label">Background Y (subtracted):</span>
+                    <span class="result-label">Background Y (measured):</span>
                     <span class="result-value" id="bgY">-</span>
                 </div>
             </div>
@@ -608,6 +608,8 @@
         let pyodide = null;
         let imageData = null;
         let bgImageData = null;
+        let imageFile = null;  // Store raw image file for 16-bit support
+        let bgImageFile = null;  // Store raw background file for 16-bit support
         let chartX = null;
         let chartY = null;
         let originalImageData = null;  // Store original image for overlay
@@ -897,7 +899,7 @@
                 pyodide = await loadPyodide();
                 
                 status.textContent = 'Loading scientific packages...';
-                await pyodide.loadPackage(['numpy', 'scipy']);
+                await pyodide.loadPackage(['numpy', 'scipy', 'pillow']);
                 
                 // Load the FWHM calculator code
                 status.textContent = 'Loading FWHM calculator...';
@@ -999,12 +1001,15 @@
                 return;
             }
             
+            // Store the raw file for 16-bit support
+            imageFile = file;
+            
             const reader = new FileReader();
             reader.onload = (e) => {
                 imagePreview.src = e.target.result;
                 imagePreview.style.display = 'block';
                 
-                // Load image to get pixel data
+                // Load image to get pixel data for preview
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
@@ -1058,6 +1063,7 @@
 
         clearBgBtn.addEventListener('click', () => {
             bgImageData = null;
+            bgImageFile = null;
             bgImagePreview.style.display = 'none';
             bgImagePreview.src = '';
             clearBgBtn.style.display = 'none';
@@ -1070,13 +1076,16 @@
                 return;
             }
             
+            // Store the raw file for 16-bit support
+            bgImageFile = file;
+            
             const reader = new FileReader();
             reader.onload = (e) => {
                 bgImagePreview.src = e.target.result;
                 bgImagePreview.style.display = 'block';
                 clearBgBtn.style.display = 'block';
                 
-                // Load image to get pixel data
+                // Load image to get pixel data for preview
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
@@ -1093,7 +1102,7 @@
 
         // Analyze button
         analyzeBtn.addEventListener('click', async () => {
-            if (!imageData || !pyodide) return;
+            if (!imageFile || !pyodide) return;
             
             const loading = document.getElementById('loading');
             const results = document.getElementById('results');
@@ -1109,24 +1118,26 @@
                 const pixelPerMicron = parseFloat(document.getElementById('pixelPerMicron').value) || 0;
                 const subtractLineoutBackground = document.getElementById('subtractLineoutBackground').checked;
                 
-                // Convert image data to numpy array
-                const width = imageData.width;
-                const height = imageData.height;
-                const data = imageData.data;
+                // Read image file as binary data
+                const imageBuffer = await imageFile.arrayBuffer();
+                const imageBytes = new Uint8Array(imageBuffer);
+                
+                // Read background file as binary data if available
+                let bgBytes = null;
+                if (bgImageFile) {
+                    const bgBuffer = await bgImageFile.arrayBuffer();
+                    bgBytes = new Uint8Array(bgBuffer);
+                }
                 
                 // Pass data to Python
-                pyodide.globals.set('img_width', width);
-                pyodide.globals.set('img_height', height);
-                pyodide.globals.set('img_data', Array.from(data));
+                pyodide.globals.set('img_bytes', imageBytes);
                 pyodide.globals.set('smooth_sigma', smoothSigma);
                 pyodide.globals.set('lineout_width', lineoutWidth);
                 pyodide.globals.set('subtract_lineout_bg', subtractLineoutBackground);
                 
                 // Pass background data if available
-                if (bgImageData) {
-                    pyodide.globals.set('bg_width', bgImageData.width);
-                    pyodide.globals.set('bg_height', bgImageData.height);
-                    pyodide.globals.set('bg_data', Array.from(bgImageData.data));
+                if (bgBytes) {
+                    pyodide.globals.set('bg_bytes', bgBytes);
                     pyodide.globals.set('has_background', true);
                 } else {
                     pyodide.globals.set('has_background', false);
@@ -1134,13 +1145,21 @@
                 
                 const result = await pyodide.runPythonAsync(`
 import numpy as np
+from PIL import Image
+import io
 
-# Reconstruct image from flat array
-data = np.array(img_data, dtype=np.float64).reshape((img_height, img_width, 4))
+# Load image from bytes using PIL to preserve bit depth
+img_file = io.BytesIO(bytes(img_bytes.to_py()))
+img_pil = Image.open(img_file)
 
-# Reconstruct background if available
+# Convert to numpy array - preserves original bit depth
+data = np.array(img_pil, dtype=np.float64)
+
+# Load background if available
 if has_background:
-    bg = np.array(bg_data, dtype=np.float64).reshape((bg_height, bg_width, 4))
+    bg_file = io.BytesIO(bytes(bg_bytes.to_py()))
+    bg_pil = Image.open(bg_file)
+    bg = np.array(bg_pil, dtype=np.float64)
 else:
     bg = None
 
