@@ -982,7 +982,7 @@
         }
 
         // Validate numeric values before using .toFixed()
-        // This function checks for undefined, null, NaN, and Infinity
+        // This function checks for undefined, null, NaN, and positive/negative Infinity
         function validateNumber(value, name) {
             if (value === undefined || value === null) {
                 console.error(`[ERROR] ${name} is ${value}`);
@@ -1796,7 +1796,8 @@ result
                 validateNumber(result.transform_limit_fs, 'transform_limit_fs');
                 
                 // Validate lines_skipped (should be a non-negative integer)
-                if (result.lines_skipped === undefined || result.lines_skipped === null || isNaN(result.lines_skipped)) {
+                if (result.lines_skipped === undefined || result.lines_skipped === null || 
+                    !Number.isInteger(result.lines_skipped) || result.lines_skipped < 0) {
                     console.error('[SPECTRUM ERROR] lines_skipped is invalid:', result.lines_skipped);
                     throw new Error('lines_skipped is invalid. This may indicate an issue with file parsing.');
                 }
