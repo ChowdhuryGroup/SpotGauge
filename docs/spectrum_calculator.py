@@ -86,7 +86,7 @@ def parse_spectrum_file(file_content):
     }
 
 
-def calculate_width_at_threshold(wavelengths, intensities, threshold_fraction):
+def calculate_spectral_width_at_threshold(wavelengths, intensities, threshold_fraction):
     """
     Calculate the spectral width at a given threshold fraction.
     
@@ -201,7 +201,86 @@ def calculate_transform_limited_pulse(wavelength_nm, bandwidth_nm, pulse_shape='
     return float(pulse_duration_fs)
 
 
-def analyze_spectrum(file_content, pulse_shape='gaussian'):
+def subtract_background_from_edges(intensities, edge_fraction=0.1):
+    """
+    Estimate and subtract background from spectrum using edge values.
+    
+    Parameters
+    ----------
+    intensities : array-like
+        Array of intensity values
+    edge_fraction : float, optional
+        Fraction of spectrum length to use from each edge (default: 0.1)
+        
+    Returns
+    -------
+    array
+        Background-subtracted intensity values
+    """
+    intensities = np.asarray(intensities, dtype=float)
+    n = len(intensities)
+    edge_n = max(1, int(n * edge_fraction))
+    
+    # Calculate average of edge regions
+    left_edge = np.mean(intensities[:edge_n])
+    right_edge = np.mean(intensities[-edge_n:])
+    
+    # Use the minimum of the two edges as background
+    background = min(left_edge, right_edge)
+    
+    print(f"[DEBUG] Background subtraction from edges: left={left_edge:.2f}, right={right_edge:.2f}, bg={background:.2f}")
+    
+    # Subtract background and ensure non-negative values
+    subtracted = intensities - background
+    subtracted = np.maximum(subtracted, 0)
+    
+    return subtracted
+
+
+def subtract_background_from_file(wavelengths, intensities, bg_file_content):
+    """
+    Subtract background spectrum from main spectrum.
+    
+    Parameters
+    ----------
+    wavelengths : array-like
+        Array of wavelengths in nm
+    intensities : array-like
+        Array of intensity values
+    bg_file_content : str
+        Content of background spectrum file
+        
+    Returns
+    -------
+    array
+        Background-subtracted intensity values
+    """
+    # Parse background file
+    bg_parsed = parse_spectrum_file(bg_file_content)
+    bg_wavelengths = bg_parsed['wavelength']
+    bg_intensities = bg_parsed['intensity']
+    
+    print(f"[DEBUG] Background file: {len(bg_wavelengths)} points")
+    
+    # Check if wavelength arrays match
+    if len(wavelengths) != len(bg_wavelengths):
+        print(f"[WARNING] Wavelength arrays have different lengths: main={len(wavelengths)}, bg={len(bg_wavelengths)}")
+        # Interpolate background to match main spectrum wavelengths
+        bg_intensities = np.interp(wavelengths, bg_wavelengths, bg_intensities)
+    elif not np.allclose(wavelengths, bg_wavelengths, rtol=1e-5):
+        print(f"[WARNING] Wavelength arrays don't match exactly, interpolating background")
+        bg_intensities = np.interp(wavelengths, bg_wavelengths, bg_intensities)
+    
+    # Subtract background and ensure non-negative values
+    subtracted = intensities - bg_intensities
+    subtracted = np.maximum(subtracted, 0)
+    
+    print(f"[DEBUG] Background subtraction complete: max={np.max(subtracted):.2f}")
+    
+    return subtracted
+
+
+def analyze_spectrum(file_content, pulse_shape='gaussian', bg_subtraction='none', bg_file_content=None):
     """
     Analyze a spectrum file and calculate key parameters.
     
@@ -212,35 +291,52 @@ def analyze_spectrum(file_content, pulse_shape='gaussian'):
     pulse_shape : str, optional
         Pulse shape for transform limit calculation: 'gaussian' or 'sech2'
         (default: 'gaussian')
+    bg_subtraction : str, optional
+        Background subtraction method: 'none', 'edges', or 'file'
+        (default: 'none')
+    bg_file_content : str, optional
+        Content of background spectrum file (required if bg_subtraction='file')
         
     Returns
     -------
     dict
         Dictionary containing:
         - 'wavelength': array of wavelengths in nm
-        - 'intensity': array of intensity values
+        - 'intensity': array of intensity values (after background subtraction)
         - 'center_wavelength': center wavelength in nm
         - 'fwhm_nm': spectral FWHM in nm
         - 'width_e2_nm': spectral width at 1/e² in nm
         - 'transform_limit_fs': transform-limited pulse duration in fs
         - 'lines_skipped': number of header lines skipped
+        - 'bg_subtracted': boolean indicating if background was subtracted
     """
     # Parse the file
     parsed = parse_spectrum_file(file_content)
     wavelengths = parsed['wavelength']
     intensities = parsed['intensity']
     
+    # Apply background subtraction if requested
+    bg_subtracted = False
+    if bg_subtraction == 'edges':
+        intensities = subtract_background_from_edges(intensities)
+        bg_subtracted = True
+    elif bg_subtraction == 'file':
+        if bg_file_content is None:
+            raise ValueError("bg_file_content is required when bg_subtraction='file'")
+        intensities = subtract_background_from_file(wavelengths, intensities, bg_file_content)
+        bg_subtracted = True
+    
     # Find center wavelength (peak)
     center_idx = np.argmax(intensities)
     center_wavelength = float(wavelengths[center_idx])
     
     # Calculate FWHM
-    fwhm_nm = calculate_width_at_threshold(wavelengths, intensities, 0.5)
+    fwhm_nm = calculate_spectral_width_at_threshold(wavelengths, intensities, 0.5)
     
     # Calculate 1/e² width
     # For Gaussian beams, 1/e² is the intensity level where I = I₀ × e^(-2) ≈ 0.1353 × I₀
     e2_threshold = np.exp(-2)  # ≈ 0.1353
-    width_e2_nm = calculate_width_at_threshold(wavelengths, intensities, e2_threshold)
+    width_e2_nm = calculate_spectral_width_at_threshold(wavelengths, intensities, e2_threshold)
     
     # Calculate transform-limited pulse duration
     transform_limit_fs = 0.0
@@ -257,7 +353,8 @@ def analyze_spectrum(file_content, pulse_shape='gaussian'):
         'fwhm_nm': float(to_python_scalar(fwhm_nm)),
         'width_e2_nm': float(to_python_scalar(width_e2_nm)),
         'transform_limit_fs': float(to_python_scalar(transform_limit_fs)),
-        'lines_skipped': parsed['lines_skipped']
+        'lines_skipped': parsed['lines_skipped'],
+        'bg_subtracted': bg_subtracted
     }
     
     return result
