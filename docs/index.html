@@ -318,6 +318,7 @@
     <div class="tabs">
         <button class="tab active" onclick="switchTab('fwhm')">FWHM Analysis</button>
         <button class="tab" onclick="switchTab('calculations')">Laser Calculations</button>
+        <button class="tab" onclick="switchTab('spectrum')">Spectrum Analysis</button>
     </div>
     
     <div id="fwhmTab" class="tab-content active">
@@ -607,6 +608,73 @@
         </div>
     </div>
 
+    <div id="spectrumTab" class="tab-content">
+        <div class="container">
+            <div class="panel">
+                <h2>📤 Upload Spectrum</h2>
+                <p style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                    Upload a spectrum file (TXT or TSV) with two columns: wavelength (nm) and intensity (pixel counts).
+                    Header lines will be automatically detected and skipped.
+                </p>
+                <div class="upload-area" id="spectrumUploadArea">
+                    <p>📁 Click or drag & drop spectrum file here</p>
+                    <p style="font-size: 12px; color: #999;">Supported formats: TXT, TSV, CSV</p>
+                </div>
+                <input type="file" id="spectrumFileInput" accept=".txt,.tsv,.csv">
+                
+                <div class="settings">
+                    <label for="pulseShape">Pulse Shape:</label>
+                    <select id="pulseShape">
+                        <option value="gaussian">Gaussian</option>
+                        <option value="sech2">Sech²</option>
+                    </select>
+                    <small>Used for transform-limited pulse duration calculation</small>
+                </div>
+                
+                <button class="btn" id="analyzeSpectrumBtn" disabled>Analyze Spectrum</button>
+            </div>
+            
+            <div class="panel">
+                <h2>📊 Results</h2>
+                
+                <div class="loading" id="spectrumLoading">
+                    <div class="spinner"></div>
+                    <p>Analyzing spectrum...</p>
+                </div>
+                
+                <div id="spectrumErrorContainer"></div>
+                
+                <div class="results" id="spectrumResults" style="display: none;">
+                    <div class="result-item">
+                        <span class="result-label">Center Wavelength:</span>
+                        <span class="result-value" id="centerWavelength">-</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">FWHM:</span>
+                        <span class="result-value" id="spectrumFWHM">-</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">1/e² Width:</span>
+                        <span class="result-value" id="spectrumWidthE2">-</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Transform-Limited Pulse:</span>
+                        <span class="result-value" id="transformLimit">-</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Lines Skipped:</span>
+                        <span class="result-value" id="linesSkipped">-</span>
+                    </div>
+                </div>
+                
+                <div class="chart-container" style="display: none;" id="spectrumChartContainer">
+                    <h3>Spectrum</h3>
+                    <canvas id="spectrumChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -640,6 +708,9 @@
                 document.getElementById('calculationsTab').classList.add('active');
                 document.querySelectorAll('.tab')[1].classList.add('active');
                 updateCalculationsTabFromResults();
+            } else if (tabName === 'spectrum') {
+                document.getElementById('spectrumTab').classList.add('active');
+                document.querySelectorAll('.tab')[2].classList.add('active');
             }
         }
         
@@ -928,6 +999,12 @@
                 const response = await fetch('fwhm_calculator.py');
                 const code = await response.text();
                 await pyodide.runPythonAsync(code);
+                
+                // Load the spectrum calculator code
+                status.textContent = 'Loading spectrum calculator...';
+                const spectrumResponse = await fetch('spectrum_calculator.py');
+                const spectrumCode = await spectrumResponse.text();
+                await pyodide.runPythonAsync(spectrumCode);
                 
                 status.textContent = 'Ready! Upload an image to analyze.';
                 document.getElementById('analyzeBtn').disabled = false;
@@ -1627,6 +1704,195 @@ result
             link.href = canvas.toDataURL('image/png');
             link.click();
         });
+
+        // Spectrum Analysis functionality
+        let spectrumChart = null;
+        let spectrumFileContent = null;
+
+        const spectrumUploadArea = document.getElementById('spectrumUploadArea');
+        const spectrumFileInput = document.getElementById('spectrumFileInput');
+        const analyzeSpectrumBtn = document.getElementById('analyzeSpectrumBtn');
+
+        // Drag and drop for spectrum upload
+        spectrumUploadArea.addEventListener('click', () => spectrumFileInput.click());
+        
+        spectrumUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            spectrumUploadArea.classList.add('dragover');
+        });
+        
+        spectrumUploadArea.addEventListener('dragleave', () => {
+            spectrumUploadArea.classList.remove('dragover');
+        });
+        
+        spectrumUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            spectrumUploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleSpectrumFile(e.dataTransfer.files[0]);
+            }
+        });
+        
+        spectrumFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleSpectrumFile(e.target.files[0]);
+            }
+        });
+
+        function handleSpectrumFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                spectrumFileContent = e.target.result;
+                document.getElementById('status').textContent = `Spectrum file loaded: ${file.name}`;
+                analyzeSpectrumBtn.disabled = false;
+            };
+            reader.readAsText(file);
+        }
+
+        analyzeSpectrumBtn.addEventListener('click', analyzeSpectrum);
+
+        async function analyzeSpectrum() {
+            if (!pyodide || !spectrumFileContent) {
+                showSpectrumError('Please wait for Python to load and upload a spectrum file.');
+                return;
+            }
+
+            const loading = document.getElementById('spectrumLoading');
+            const results = document.getElementById('spectrumResults');
+            const errorContainer = document.getElementById('spectrumErrorContainer');
+            const chartContainer = document.getElementById('spectrumChartContainer');
+            
+            loading.classList.add('active');
+            results.style.display = 'none';
+            chartContainer.style.display = 'none';
+            errorContainer.innerHTML = '';
+            
+            try {
+                const pulseShape = document.getElementById('pulseShape').value;
+                
+                // Pass file content safely to Python using globals
+                pyodide.globals.set('file_content', spectrumFileContent);
+                
+                // Call Python analysis function
+                const pythonCode = `
+result = analyze_spectrum(file_content, pulse_shape='${pulseShape}')
+result
+`;
+                const result = await pyodide.runPythonAsync(pythonCode);
+                
+                console.log('[SPECTRUM] Analysis result:', result);
+                
+                // Display results
+                document.getElementById('centerWavelength').textContent = 
+                    result.center_wavelength.toFixed(2) + ' nm';
+                document.getElementById('spectrumFWHM').textContent = 
+                    result.fwhm_nm.toFixed(2) + ' nm';
+                document.getElementById('spectrumWidthE2').textContent = 
+                    result.width_e2_nm.toFixed(2) + ' nm';
+                document.getElementById('transformLimit').textContent = 
+                    result.transform_limit_fs.toFixed(2) + ' fs';
+                document.getElementById('linesSkipped').textContent = 
+                    result.lines_skipped;
+                
+                results.style.display = 'block';
+                
+                // Plot spectrum
+                drawSpectrumChart(result.wavelength, result.intensity, 
+                    result.center_wavelength, result.fwhm_nm);
+                chartContainer.style.display = 'block';
+                
+            } catch (error) {
+                console.error('[SPECTRUM] Error:', error);
+                showSpectrumError('Error analyzing spectrum: ' + error.message);
+            } finally {
+                loading.classList.remove('active');
+            }
+        }
+
+        function drawSpectrumChart(wavelengths, intensities, centerWavelength, fwhm) {
+            const canvas = document.getElementById('spectrumChart');
+            const ctx = canvas.getContext('2d');
+            
+            // Destroy previous chart if it exists
+            if (spectrumChart) {
+                spectrumChart.destroy();
+            }
+            
+            // Calculate half maximum line
+            const maxIntensity = Math.max(...intensities);
+            const halfMax = maxIntensity * 0.5;
+            const halfMaxLine = wavelengths.map(() => halfMax);
+            
+            // Calculate 1/e² line
+            const e2Threshold = maxIntensity / (Math.E * Math.E);
+            const e2Line = wavelengths.map(() => e2Threshold);
+            
+            spectrumChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: wavelengths,
+                    datasets: [
+                        {
+                            label: 'Intensity',
+                            data: intensities,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Half Maximum',
+                            data: halfMaxLine,
+                            borderColor: '#e74c3c',
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        },
+                        {
+                            label: '1/e²',
+                            data: e2Line,
+                            borderColor: '#f39c12',
+                            borderDash: [10, 5],
+                            fill: false,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Spectrum (Center: ${centerWavelength.toFixed(2)} nm, FWHM: ${fwhm.toFixed(2)} nm)`
+                        },
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Wavelength (nm)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Intensity (counts)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showSpectrumError(message) {
+            const errorContainer = document.getElementById('spectrumErrorContainer');
+            errorContainer.innerHTML = `<div class="error">${message}</div>`;
+        }
 
         // Initialize when page loads
         initPyodide();
