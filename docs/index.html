@@ -1871,7 +1871,10 @@ result
 `;
                 }
                 
-                const result = await pyodide.runPythonAsync(pythonCode);
+                const pythonResult = await pyodide.runPythonAsync(pythonCode);
+                
+                // Convert Pyodide proxy to JavaScript object
+                const result = pythonResult.toJs ? pythonResult.toJs({ dict_converter: Object.fromEntries }) : pythonResult;
                 
                 console.log('[SPECTRUM] Analysis result:', result);
                 
