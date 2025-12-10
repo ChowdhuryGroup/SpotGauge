@@ -1778,9 +1778,40 @@ result
 result = analyze_spectrum(file_content, pulse_shape='${pulseShape}')
 result
 `;
-                const result = await pyodide.runPythonAsync(pythonCode);
+                const pythonResult = await pyodide.runPythonAsync(pythonCode);
+                
+                // Convert Pyodide proxy to JavaScript object if necessary
+                const result = pythonResult.toJs ? pythonResult.toJs({ dict_converter: Object.fromEntries }) : pythonResult;
                 
                 console.log('[SPECTRUM] Analysis result:', result);
+                console.log('[SPECTRUM] Result type:', typeof result);
+                console.log('[SPECTRUM] Result keys:', Object.keys(result));
+                
+                // Validate numeric values before using .toFixed()
+                const validateNumber = (value, name) => {
+                    if (value === undefined || value === null) {
+                        console.error(`[SPECTRUM ERROR] ${name} is ${value}`);
+                        throw new Error(`${name} is ${value}. This may indicate an issue with the spectrum analysis.`);
+                    }
+                    if (isNaN(value)) {
+                        console.error(`[SPECTRUM ERROR] ${name} is NaN`);
+                        throw new Error(`${name} is NaN. The spectrum file may not have sufficient data.`);
+                    }
+                    if (!isFinite(value)) {
+                        console.error(`[SPECTRUM ERROR] ${name} is not finite: ${value}`);
+                        throw new Error(`${name} is not finite (${value}). This may indicate a calculation error.`);
+                    }
+                    console.log(`[SPECTRUM DEBUG] ${name} validated: ${value}`);
+                    return true;
+                };
+                
+                // Validate all numeric results
+                console.log('[SPECTRUM DEBUG] Validating numeric values...');
+                validateNumber(result.center_wavelength, 'center_wavelength');
+                validateNumber(result.fwhm_nm, 'fwhm_nm');
+                validateNumber(result.width_e2_nm, 'width_e2_nm');
+                validateNumber(result.transform_limit_fs, 'transform_limit_fs');
+                console.log('[SPECTRUM DEBUG] All numeric values validated successfully');
                 
                 // Display results
                 document.getElementById('centerWavelength').textContent = 
