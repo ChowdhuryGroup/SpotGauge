@@ -981,6 +981,25 @@
             return value.toExponential(3) + ' ' + unit;
         }
 
+        // Validate numeric values before using .toFixed()
+        // This function checks for undefined, null, NaN, and Infinity
+        function validateNumber(value, name) {
+            if (value === undefined || value === null) {
+                console.error(`[ERROR] ${name} is ${value}`);
+                throw new Error(`${name} is ${value}. This may indicate an issue with data processing.`);
+            }
+            if (isNaN(value)) {
+                console.error(`[ERROR] ${name} is NaN`);
+                throw new Error(`${name} is NaN. The data may not have sufficient signal for calculation.`);
+            }
+            if (!isFinite(value)) {
+                console.error(`[ERROR] ${name} is not finite: ${value}`);
+                throw new Error(`${name} is not finite (${value}). This may indicate a calculation error.`);
+            }
+            console.log(`[DEBUG] ${name} validated: ${value}`);
+            return true;
+        }
+
         // Initialize Pyodide
         async function initPyodide() {
             const status = document.getElementById('status');
@@ -1317,24 +1336,6 @@ result
                 console.log(`  radiusE2Y: ${radiusE2Y} (type: ${typeof radiusE2Y})`);
                 console.log(`  centerX: ${centerX} (type: ${typeof centerX})`);
                 console.log(`  centerY: ${centerY} (type: ${typeof centerY})`);
-                
-                // Validate numeric values before using .toFixed()
-                const validateNumber = (value, name) => {
-                    if (value === undefined || value === null) {
-                        console.error(`[ERROR] ${name} is ${value}`);
-                        throw new Error(`${name} is ${value}. This may indicate an issue with the image processing.`);
-                    }
-                    if (isNaN(value)) {
-                        console.error(`[ERROR] ${name} is NaN`);
-                        throw new Error(`${name} is NaN. The image may not have sufficient signal for FWHM calculation.`);
-                    }
-                    if (!isFinite(value)) {
-                        console.error(`[ERROR] ${name} is not finite: ${value}`);
-                        throw new Error(`${name} is not finite (${value}). This may indicate a calculation error.`);
-                    }
-                    console.log(`[DEBUG] ${name} validated: ${value}`);
-                    return true;
-                };
                 
                 // Validate all numeric results
                 console.log('[DEBUG] Validating numeric values...');
@@ -1787,30 +1788,18 @@ result
                 console.log('[SPECTRUM] Result type:', typeof result);
                 console.log('[SPECTRUM] Result keys:', Object.keys(result));
                 
-                // Validate numeric values before using .toFixed()
-                const validateNumber = (value, name) => {
-                    if (value === undefined || value === null) {
-                        console.error(`[SPECTRUM ERROR] ${name} is ${value}`);
-                        throw new Error(`${name} is ${value}. This may indicate an issue with the spectrum analysis.`);
-                    }
-                    if (isNaN(value)) {
-                        console.error(`[SPECTRUM ERROR] ${name} is NaN`);
-                        throw new Error(`${name} is NaN. The spectrum file may not have sufficient data.`);
-                    }
-                    if (!isFinite(value)) {
-                        console.error(`[SPECTRUM ERROR] ${name} is not finite: ${value}`);
-                        throw new Error(`${name} is not finite (${value}). This may indicate a calculation error.`);
-                    }
-                    console.log(`[SPECTRUM DEBUG] ${name} validated: ${value}`);
-                    return true;
-                };
-                
                 // Validate all numeric results
                 console.log('[SPECTRUM DEBUG] Validating numeric values...');
                 validateNumber(result.center_wavelength, 'center_wavelength');
                 validateNumber(result.fwhm_nm, 'fwhm_nm');
                 validateNumber(result.width_e2_nm, 'width_e2_nm');
                 validateNumber(result.transform_limit_fs, 'transform_limit_fs');
+                
+                // Validate lines_skipped (should be a non-negative integer)
+                if (result.lines_skipped === undefined || result.lines_skipped === null || isNaN(result.lines_skipped)) {
+                    console.error('[SPECTRUM ERROR] lines_skipped is invalid:', result.lines_skipped);
+                    throw new Error('lines_skipped is invalid. This may indicate an issue with file parsing.');
+                }
                 console.log('[SPECTRUM DEBUG] All numeric values validated successfully');
                 
                 // Display results
