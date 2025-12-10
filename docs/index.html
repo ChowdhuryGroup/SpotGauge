@@ -631,6 +631,24 @@
                     <small>Used for transform-limited pulse duration calculation</small>
                 </div>
                 
+                <div class="settings">
+                    <label for="spectrumBgSubtraction">Background Subtraction:</label>
+                    <select id="spectrumBgSubtraction">
+                        <option value="none">None</option>
+                        <option value="edges">From Edges (10%)</option>
+                        <option value="file">From File</option>
+                    </select>
+                    <small>Optionally subtract background from spectrum</small>
+                </div>
+                
+                <div id="spectrumBgFileSection" style="display: none; margin-top: 15px;">
+                    <div class="upload-area" id="spectrumBgUploadArea">
+                        <p>📁 Click or drag & drop background spectrum file here</p>
+                        <p style="font-size: 12px; color: #999;">Same format as main spectrum</p>
+                    </div>
+                    <input type="file" id="spectrumBgFileInput" accept=".txt,.tsv,.csv">
+                </div>
+                
                 <button class="btn" id="analyzeSpectrumBtn" disabled>Analyze Spectrum</button>
             </div>
             
@@ -668,7 +686,13 @@
                 </div>
                 
                 <div class="chart-container" style="display: none;" id="spectrumChartContainer">
-                    <h3>Spectrum</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h3 style="margin: 0;">Spectrum</h3>
+                        <button class="btn" id="resetSpectrumZoom" style="padding: 5px 15px; font-size: 12px;">Reset Zoom</button>
+                    </div>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                        💡 Use mouse wheel to zoom, Shift+drag to pan
+                    </p>
                     <canvas id="spectrumChart"></canvas>
                 </div>
             </div>
@@ -677,6 +701,8 @@
 
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script>
         let pyodide = null;
         let imageData = null;
@@ -1708,10 +1734,25 @@ result
         // Spectrum Analysis functionality
         let spectrumChart = null;
         let spectrumFileContent = null;
+        let spectrumBgFileContent = null;
 
         const spectrumUploadArea = document.getElementById('spectrumUploadArea');
         const spectrumFileInput = document.getElementById('spectrumFileInput');
         const analyzeSpectrumBtn = document.getElementById('analyzeSpectrumBtn');
+        const spectrumBgSubtraction = document.getElementById('spectrumBgSubtraction');
+        const spectrumBgFileSection = document.getElementById('spectrumBgFileSection');
+        const spectrumBgUploadArea = document.getElementById('spectrumBgUploadArea');
+        const spectrumBgFileInput = document.getElementById('spectrumBgFileInput');
+
+        // Show/hide background file upload section based on selection
+        spectrumBgSubtraction.addEventListener('change', () => {
+            if (spectrumBgSubtraction.value === 'file') {
+                spectrumBgFileSection.style.display = 'block';
+            } else {
+                spectrumBgFileSection.style.display = 'none';
+                spectrumBgFileContent = null; // Clear background file content
+            }
+        });
 
         // Drag and drop for spectrum upload
         spectrumUploadArea.addEventListener('click', () => spectrumFileInput.click());
@@ -1739,12 +1780,47 @@ result
             }
         });
 
+        // Drag and drop for background spectrum upload
+        spectrumBgUploadArea.addEventListener('click', () => spectrumBgFileInput.click());
+        
+        spectrumBgUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            spectrumBgUploadArea.classList.add('dragover');
+        });
+        
+        spectrumBgUploadArea.addEventListener('dragleave', () => {
+            spectrumBgUploadArea.classList.remove('dragover');
+        });
+        
+        spectrumBgUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            spectrumBgUploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleSpectrumBgFile(e.dataTransfer.files[0]);
+            }
+        });
+        
+        spectrumBgFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleSpectrumBgFile(e.target.files[0]);
+            }
+        });
+
         function handleSpectrumFile(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 spectrumFileContent = e.target.result;
                 document.getElementById('status').textContent = `Spectrum file loaded: ${file.name}`;
                 analyzeSpectrumBtn.disabled = false;
+            };
+            reader.readAsText(file);
+        }
+
+        function handleSpectrumBgFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                spectrumBgFileContent = e.target.result;
+                document.getElementById('status').textContent = `Background spectrum file loaded: ${file.name}`;
             };
             reader.readAsText(file);
         }
@@ -1769,18 +1845,60 @@ result
             
             try {
                 const pulseShape = document.getElementById('pulseShape').value;
+                const bgSubtraction = spectrumBgSubtraction.value;
+                
+                // Validate background file if needed
+                if (bgSubtraction === 'file' && !spectrumBgFileContent) {
+                    showSpectrumError('Please upload a background spectrum file.');
+                    return;
+                }
                 
                 // Pass file content safely to Python using globals
                 pyodide.globals.set('file_content', spectrumFileContent);
+                pyodide.globals.set('bg_subtraction', bgSubtraction);
                 
-                // Call Python analysis function
-                const pythonCode = `
-result = analyze_spectrum(file_content, pulse_shape='${pulseShape}')
+                let pythonCode = '';
+                if (bgSubtraction === 'file') {
+                    pyodide.globals.set('bg_file_content', spectrumBgFileContent);
+                    pythonCode = `
+result = analyze_spectrum(file_content, pulse_shape='${pulseShape}', bg_subtraction='${bgSubtraction}', bg_file_content=bg_file_content)
 result
 `;
+                } else {
+                    pythonCode = `
+result = analyze_spectrum(file_content, pulse_shape='${pulseShape}', bg_subtraction='${bgSubtraction}')
+result
+`;
+                }
+                
                 const result = await pyodide.runPythonAsync(pythonCode);
                 
                 console.log('[SPECTRUM] Analysis result:', result);
+                
+                // Validate result object and its properties
+                if (!result) {
+                    throw new Error('No result returned from spectrum analysis');
+                }
+                
+                const validateNumber = (value, name) => {
+                    if (value === undefined || value === null) {
+                        console.error(`[ERROR] ${name} is ${value}`);
+                        throw new Error(`${name} is ${value}. This may indicate an issue with the spectrum processing.`);
+                    }
+                    if (isNaN(value)) {
+                        console.error(`[ERROR] ${name} is NaN`);
+                        throw new Error(`${name} is NaN. The spectrum may not have sufficient signal for analysis.`);
+                    }
+                    if (!isFinite(value)) {
+                        console.error(`[ERROR] ${name} is not finite: ${value}`);
+                        throw new Error(`${name} is not finite (${value}). This may indicate a calculation error.`);
+                    }
+                };
+                
+                validateNumber(result.center_wavelength, 'center_wavelength');
+                validateNumber(result.fwhm_nm, 'fwhm_nm');
+                validateNumber(result.width_e2_nm, 'width_e2_nm');
+                validateNumber(result.transform_limit_fs, 'transform_limit_fs');
                 
                 // Display results
                 document.getElementById('centerWavelength').textContent = 
@@ -1869,6 +1987,27 @@ result
                         },
                         legend: {
                             display: true
+                        },
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'xy',
+                                modifierKey: 'shift'
+                            },
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                    speed: 0.1
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'xy'
+                            },
+                            limits: {
+                                x: {min: 'original', max: 'original'},
+                                y: {min: 0, max: 'original'}
+                            }
                         }
                     },
                     scales: {
@@ -1882,8 +2021,14 @@ result
                             title: {
                                 display: true,
                                 text: 'Intensity (counts)'
-                            }
+                            },
+                            beginAtZero: true
                         }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
                     }
                 }
             });
@@ -1893,6 +2038,13 @@ result
             const errorContainer = document.getElementById('spectrumErrorContainer');
             errorContainer.innerHTML = `<div class="error">${message}</div>`;
         }
+
+        // Reset zoom button for spectrum chart
+        document.getElementById('resetSpectrumZoom').addEventListener('click', () => {
+            if (spectrumChart) {
+                spectrumChart.resetZoom();
+            }
+        });
 
         // Initialize when page loads
         initPyodide();
