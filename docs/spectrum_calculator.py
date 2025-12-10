@@ -23,8 +23,7 @@ def to_python_scalar(value):
     """
     if hasattr(value, 'item'):
         # It's a numpy scalar, use .item() for proper conversion
-        native_val = value.item()
-        return type(native_val)(native_val)
+        return value.item()
     else:
         # Already a Python native type
         return value
@@ -239,7 +238,8 @@ def analyze_spectrum(file_content, pulse_shape='gaussian'):
     fwhm_nm = calculate_width_at_threshold(wavelengths, intensities, 0.5)
     
     # Calculate 1/e² width
-    e2_threshold = 1.0 / (np.e ** 2)  # ≈ 0.1353
+    # For Gaussian beams, 1/e² is the intensity level where I = I₀ × e^(-2) ≈ 0.1353 × I₀
+    e2_threshold = np.exp(-2)  # ≈ 0.1353
     width_e2_nm = calculate_width_at_threshold(wavelengths, intensities, e2_threshold)
     
     # Calculate transform-limited pulse duration

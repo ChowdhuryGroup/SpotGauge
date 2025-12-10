@@ -1770,9 +1770,11 @@ result
             try {
                 const pulseShape = document.getElementById('pulseShape').value;
                 
+                // Pass file content safely to Python using globals
+                pyodide.globals.set('file_content', spectrumFileContent);
+                
                 // Call Python analysis function
                 const pythonCode = `
-file_content = """${spectrumFileContent.replace(/"/g, '\\"')}"""
 result = analyze_spectrum(file_content, pulse_shape='${pulseShape}')
 result
 `;
