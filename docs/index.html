@@ -308,6 +308,10 @@
             color: #2c3e50;
         }
     </style>
+      <!-- noUiSlider for double-knob sliders -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.0/nouislider.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.0/nouislider.min.js"></script>
+
 </head>
 <body>
     <h1>🔬 SpotGauge - Focal Spot Analysis</h1>
@@ -685,15 +689,32 @@
                     </div>
                 </div>
                 
-                <div class="chart-container" style="display: none;" id="spectrumChartContainer">
+                <div class="chart-container" style="display: none; height: 400px;" id="spectrumChartContainer"></div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <h3 style="margin: 0;">Spectrum</h3>
                         <button class="btn" id="resetSpectrumZoom" style="padding: 5px 15px; font-size: 12px;">Reset Zoom</button>
                     </div>
-                    <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                    <p style="font-size: 12px; color: #666; margin-bottom: 20px;">
                         💡 Use mouse wheel to zoom, Shift+drag to pan
                     </p>
-                    <canvas id="spectrumChart"></canvas>
+                    <canvas id="spectrumChart" style="height: 100%; max-height: 400px; margin-bottom: 20px;"></canvas>
+                    <div class="sliders">
+                        <div class="slider-row" style="margin-bottom: 15px;">
+                          <div id="xCropLabel" class="slider-label" style="margin-bottom: 5px;"></div>
+
+                          <div id="xSlider" class="slider"></div>
+
+                          <div id="xValues" style="margin-top: 5px;" class="slider-values"></div>
+                        </div>
+                    
+                        <div class="slider-row" style="margin-bottom: 15px;"></div>
+                          <div id="yCropLabel" class="slider-label" style="margin-bottom: 5px;"></div>
+
+                          <div id="ySlider" class="slider"></div>
+
+                          <div id="yValues" style="margin-top: 5px;" class="slider-values"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1930,53 +1951,117 @@ result
             }
         }
 
+        // Keep track of slider instances so we don't recreate unnecessarily
+        let xSliderInstance = null;
+        let ySliderInstance = null;
+
+        function createOrUpdateSlider(containerId, instanceRefName, rangeMin, rangeMax, startLow, startHigh, onUpdate) {
+            const container = document.getElementById(containerId);
+            if (!container) return null;
+
+            const existing = (instanceRefName === 'x') ? xSliderInstance : ySliderInstance;
+            if (existing) {
+                existing.updateOptions({
+                    range: { min: rangeMin, max: rangeMax },
+                    step: (rangeMax - rangeMin) / 1000
+                }, true);
+                existing.set([startLow, startHigh]);
+                return existing;
+            }
+
+            const slider = noUiSlider.create(container, {
+                start: [startLow, startHigh],
+                connect: true,
+                behaviour: 'drag-tap',
+                range: {
+                    min: rangeMin,
+                    max: rangeMax
+                },
+                step: (rangeMax - rangeMin) / 1000
+            });
+
+            slider.on('update', (values) => {
+                const v0 = parseFloat(values[0]);
+                const v1 = parseFloat(values[1]);
+                onUpdate(v0, v1);
+            });
+
+            if (instanceRefName === 'x') xSliderInstance = slider;
+            if (instanceRefName === 'y') ySliderInstance = slider;
+
+            return slider;
+        }
+
+        function updateValuesDisplay(elementId, low, high, precision = 2) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            el.textContent = `${low.toFixed(precision)} — ${high.toFixed(precision)}`;
+        }
+
+        /*
+        Important fix:
+        Chart.js was using the labels array for the x-axis (category scale), and setting
+        scales.x.min/max to numeric wavelength values did not behave reliably: the right
+        handle could get ignored or produce glitches because the x scale treated positions
+        as category indices/strings.
+
+        Fix approach: switch the x-axis to a linear numeric scale and provide data as
+        {x: wavelength, y: intensity} points. This makes min/max numeric and allows the
+        noUiSlider handles (which deliver numeric values) to update the chart consistently.
+        */
         function drawSpectrumChart(wavelengths, intensities, centerWavelength, fwhm) {
             const canvas = document.getElementById('spectrumChart');
             const ctx = canvas.getContext('2d');
-            
+
             // Destroy previous chart if it exists
             if (spectrumChart) {
                 spectrumChart.destroy();
+                spectrumChart = null;
             }
-            
-            // Calculate half maximum line
+
+            // Calculate max and thresholds
             const maxIntensity = Math.max(...intensities);
             const halfMax = maxIntensity * 0.5;
-            const halfMaxLine = wavelengths.map(() => halfMax);
-            
-            // Calculate 1/e² line
             const e2Threshold = maxIntensity / (Math.E * Math.E);
-            const e2Line = wavelengths.map(() => e2Threshold);
-            
+
+            // Convert to {x, y} style data so x-axis can be linear numeric
+            const intensityPoints = wavelengths.map((w, i) => ({ x: w, y: intensities[i] }));
+            const halfMaxPoints = wavelengths.map((w) => ({ x: w, y: halfMax }));
+            const e2Points = wavelengths.map((w) => ({ x: w, y: e2Threshold }));
+
+            // Prepare chart using a numeric (linear) x-axis
             spectrumChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: wavelengths,
+                    // Do not use labels for numeric x scale; datasets hold x/y points
                     datasets: [
                         {
                             label: 'Intensity',
-                            data: intensities,
+                            data: intensityPoints,
                             borderColor: '#3498db',
                             backgroundColor: 'rgba(52, 152, 219, 0.1)',
                             fill: true,
                             tension: 0.4,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            parsing: false // data already in {x,y} form
                         },
                         {
                             label: 'Half Maximum',
-                            data: halfMaxLine,
+                            data: halfMaxPoints,
                             borderColor: '#e74c3c',
                             borderDash: [5, 5],
                             fill: false,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            parsing: false
                         },
                         {
                             label: '1/e²',
-                            data: e2Line,
+                            data: e2Points,
                             borderColor: '#f39c12',
                             borderDash: [10, 5],
                             fill: false,
-                            pointRadius: 0
+                            pointRadius: 0,
+                            parsing: false
                         }
                     ]
                 },
@@ -2008,16 +2093,23 @@ result
                                 mode: 'xy'
                             },
                             limits: {
-                                x: {min: 'original', max: 'original'},
-                                y: {min: 0, max: 'original'}
+                                x: { min: 'original', max: 'original' },
+                                y: { min: 0, max: 'original' }
                             }
                         }
                     },
                     scales: {
                         x: {
+                            type: 'linear', // <- numeric linear x-axis fixes the slider behaviour
                             title: {
                                 display: true,
                                 text: 'Wavelength (nm)'
+                            },
+                            min: Math.min(...wavelengths),
+                            max: Math.max(...wavelengths),
+                            ticks: {
+                                // ensure ticks are numeric
+                                callback: (val) => Number(val).toFixed(0)
                             }
                         },
                         y: {
@@ -2025,7 +2117,9 @@ result
                                 display: true,
                                 text: 'Intensity (counts)'
                             },
-                            beginAtZero: true
+                            beginAtZero: true,
+                            min: 0,
+                            max: maxIntensity
                         }
                     },
                     interaction: {
@@ -2035,7 +2129,41 @@ result
                     }
                 }
             });
+
+            // Initialize sliders for cropping:
+            const xMin = Math.min(...wavelengths);
+            const xMax = Math.max(...wavelengths);
+            const yMin = 0;
+            const yMax = maxIntensity;
+
+            //draw yCropLabel and xCropLabel text
+            document.getElementById('xCropLabel').innerText = `X crop (nm): ${xMin.toFixed(2)} - ${xMax.toFixed(2)}`;
+            document.getElementById('yCropLabel').innerText = `Y crop (counts): ${yMin} - ${yMax}`;
+
+            // Create or update X slider (wavelength). Now min/max are numeric and map directly to linear x-axis.
+            createOrUpdateSlider('xSlider', 'x', xMin, xMax, xMin, xMax, (low, high) => {
+                // Prevent flipping handles
+                if (low >= high) return;
+                spectrumChart.options.scales.x.min = low;
+                spectrumChart.options.scales.x.max = high;
+                updateValuesDisplay('xValues', low, high, 3);
+                spectrumChart.update('none');
+            });
+
+            // Create or update Y slider (intensity)
+            createOrUpdateSlider('ySlider', 'y', yMin, yMax, yMin, yMax, (low, high) => {
+                if (low >= high) return;
+                spectrumChart.options.scales.y.min = low;
+                spectrumChart.options.scales.y.max = high;
+                updateValuesDisplay('yValues', low, high, 2);
+                spectrumChart.update('none');
+            });
+
+            // Set initial display text
+            updateValuesDisplay('xValues', xMin, xMax, 3);
+            updateValuesDisplay('yValues', yMin, yMax, 2);
         }
+
 
         function showSpectrumError(message) {
             const errorContainer = document.getElementById('spectrumErrorContainer');
