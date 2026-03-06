@@ -5,7 +5,7 @@ This module provides functions to calculate the FWHM of a focal spot image.
 """
 
 import numpy as np
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, affine_transform, label as ndimage_label
 
 
 def to_python_scalar(value):
@@ -147,6 +147,248 @@ def estimate_lineout_background(profile, edge_fraction=0.1):
     # Use minimum of the two edges as background estimate
     # This is conservative and avoids overestimating background
     return min(left_edge, right_edge)
+
+
+def rotate_about_center(data, theta, cx, cy, order=3):
+    """
+    Rotate image data by angle theta (radians) about pixel coordinate (cx, cy).
+
+    Parameters
+    ----------
+    data : 2D array-like
+        The image to rotate
+    theta : float
+        Rotation angle in radians
+    cx : float
+        X coordinate (column index) of the rotation center
+    cy : float
+        Y coordinate (row index) of the rotation center
+    order : int, optional
+        Spline interpolation order (default: 3)
+
+    Returns
+    -------
+    numpy.ndarray
+        Rotated image with same shape as input
+    """
+    data = np.asarray(data, dtype=float)
+    c, s = np.cos(theta), np.sin(theta)
+    # Forward rotation matrix in (x, y) = (col, row) space
+    R = np.array([[c, -s],
+                  [s,  c]])
+    # scipy.ndimage.affine_transform maps output coords -> input coords,
+    # so use the inverse (transpose) rotation.
+    A = R.T
+    center = np.array([cx, cy])
+    offset = center - A @ center
+    # affine_transform expects matrix in (row, col) = (y, x) order
+    A_rc = np.array([[A[1, 1], A[1, 0]],
+                     [A[0, 1], A[0, 0]]])
+    offset_rc = np.array([offset[1], offset[0]])
+    return affine_transform(data, A_rc, offset=offset_rc, order=order,
+                            mode='constant', cval=0.0)
+
+
+def compute_orientation_and_centroid(image, threshold_fraction=1e-3):
+    """
+    Compute the orientation angle and weighted centroid of the brightest region.
+
+    Uses intensity-weighted second central moments of the connected region
+    containing the peak to find the principal axis orientation.
+
+    Parameters
+    ----------
+    image : 2D array-like
+        The focal spot image
+    threshold_fraction : float, optional
+        Fraction of peak intensity used to threshold the region (default: 1e-3)
+
+    Returns
+    -------
+    tuple of (float, float, float)
+        ``(theta, cx, cy)`` where *theta* is the rotation angle in radians
+        to pass to :func:`rotate_about_center` in order to align the major
+        axis of the focal spot with the image X (column) axis; *cx* is the
+        intensity-weighted centroid column; *cy* is the intensity-weighted
+        centroid row.
+    """
+    image = np.asarray(image, dtype=float)
+    max_val = np.max(image)
+    if max_val <= 0:
+        h, w = image.shape
+        return 0.0, float(w // 2), float(h // 2)
+
+    # Threshold to find the bright region
+    mask = image > threshold_fraction * max_val
+
+    # Label connected components and isolate the one containing the peak
+    labeled, _ = ndimage_label(mask)
+    py, px = np.unravel_index(np.argmax(image), image.shape)
+    peak_label = labeled[py, px]
+    component_mask = (labeled == peak_label) if peak_label > 0 else mask
+
+    weights = image * component_mask
+    M00 = np.sum(weights)
+    if M00 <= 0:
+        return 0.0, float(px), float(py)
+
+    # Intensity-weighted centroid
+    y_coords, x_coords = np.indices(image.shape)
+    cx = float(np.sum(x_coords * weights) / M00)
+    cy = float(np.sum(y_coords * weights) / M00)
+
+    # Normalized second central moments
+    dx = x_coords - cx
+    dy = y_coords - cy
+    mu20_y = float(np.sum(dy ** 2 * weights) / M00)   # variance in row direction
+    mu02_x = float(np.sum(dx ** 2 * weights) / M00)   # variance in col direction
+    mu11   = float(np.sum(dx * dy * weights) / M00)    # cross term
+
+    # Rotation angle to align the major axis with the image X (column) axis.
+    # Derived from the covariance matrix in (col, row) space:
+    #   [[mu02_x, mu11], [mu11, mu20_y]]
+    # The angle of the major eigenvector from the x-axis is:
+    #   angle_major = 0.5 * arctan2(2*mu11, mu02_x - mu20_y)
+    # The rotation to align it with x is theta = -angle_major.
+    #
+    # When |mu11| is negligible (axis-aligned spot), handle explicitly to
+    # avoid the sign of floating-point zero flipping the arctan2 quadrant.
+    if abs(mu11) < 1e-10 * (mu02_x + mu20_y):
+        # No cross-term: spot is already axis-aligned.
+        # If wider in x (cols): no rotation needed.
+        # If wider in y (rows): rotate 90° to align major axis with x.
+        theta = 0.0 if mu02_x >= mu20_y else float(np.pi / 2)
+    else:
+        theta = 0.5 * float(np.arctan2(-2.0 * mu11, mu02_x - mu20_y))
+    return theta, cx, cy
+
+
+def generate_visualization_png(data_rot, profile_x, profile_y,
+                                fwhm_x, fwhm_y, center_x, center_y,
+                                lineout_width=0, rotation_angle_deg=0.0):
+    """
+    Generate a 3-panel matplotlib figure (focal spot + X lineout + Y lineout)
+    and return it as a base64-encoded PNG string.
+
+    Parameters
+    ----------
+    data_rot : 2D array-like
+        The (possibly rotated) focal spot image for display
+    profile_x : array-like
+        1D intensity profile along the X (column) direction through the peak
+    profile_y : array-like
+        1D intensity profile along the Y (row) direction through the peak
+    fwhm_x : float
+        FWHM in the X direction (pixels)
+    fwhm_y : float
+        FWHM in the Y direction (pixels)
+    center_x : float
+        Column index of the peak
+    center_y : float
+        Row index of the peak
+    lineout_width : int, optional
+        Half-width of the averaging region used for lineouts (default: 0)
+    rotation_angle_deg : float, optional
+        Rotation angle in degrees applied to align principal axes (default: 0.0)
+
+    Returns
+    -------
+    str or None
+        Base64-encoded PNG string, or *None* if matplotlib is unavailable
+    """
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import io
+        import base64
+    except ImportError:
+        return None
+
+    profile_x = np.asarray(profile_x, dtype=float)
+    profile_y = np.asarray(profile_y, dtype=float)
+
+    # Normalize lineouts to [0, 1]
+    max_x = np.max(profile_x) if np.max(profile_x) > 0 else 1.0
+    max_y = np.max(profile_y) if np.max(profile_y) > 0 else 1.0
+    profile_x_norm = profile_x / max_x
+    profile_y_norm = profile_y / max_y
+
+    fwhm_mult = 2.0
+    x_peak = int(np.argmax(profile_x_norm))
+    y_peak = int(np.argmax(profile_y_norm))
+
+    # Crop limits for the lineout plots
+    x_lo = max(0.0, x_peak - fwhm_mult * fwhm_x)
+    x_hi = min(float(len(profile_x) - 1), x_peak + fwhm_mult * fwhm_x)
+    y_lo = max(0.0, y_peak - fwhm_mult * fwhm_y)
+    y_hi = min(float(len(profile_y) - 1), y_peak + fwhm_mult * fwhm_y)
+
+    # Normalize the image to [0, 1] for display
+    data_rot = np.asarray(data_rot, dtype=float)
+    data_max = np.max(data_rot)
+    data_display = data_rot / data_max if data_max > 0 else data_rot
+
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+
+    # --- Panel 1: rotated focal spot image with inferno colormap ---
+    im = axes[0].imshow(data_display, cmap='inferno', vmin=0, vmax=1,
+                        origin='upper', interpolation='nearest')
+    axes[0].set_xlim(y_lo, y_hi)
+    axes[0].set_ylim(x_hi, x_lo)   # inverted: row 0 at top
+    axes[0].axhline(y=center_y, color='cyan', linewidth=1,
+                    alpha=0.8, linestyle='--')
+    axes[0].axvline(x=center_x, color='cyan', linewidth=1,
+                    alpha=0.8, linestyle='--')
+    title = (f'Focal Spot (θ={rotation_angle_deg:.1f}°)'
+             if abs(rotation_angle_deg) > 0.5 else 'Focal Spot')
+    axes[0].set_title(title)
+    axes[0].set_xlabel('Column (px)')
+    axes[0].set_ylabel('Row (px)')
+    cbar = plt.colorbar(im, ax=axes[0])
+    cbar.set_label('Normalized Intensity')
+
+    # --- Panel 2: X profile (along columns) ---
+    lw_label = f'{2 * lineout_width + 1}' if lineout_width > 0 else '1'
+    x_pixels = np.arange(len(profile_x))
+    axes[1].plot(x_pixels, profile_x_norm, color='#3498db', linewidth=1.5)
+    axes[1].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
+                    label='Half-max')
+    axes[1].axvline(x=x_peak - fwhm_x / 2, color='green',
+                    linestyle='--', linewidth=1, label='FWHM')
+    axes[1].axvline(x=x_peak + fwhm_x / 2, color='green',
+                    linestyle='--', linewidth=1)
+    axes[1].set_xlim(x_lo, x_hi)
+    axes[1].set_ylim(0, 1.05)
+    axes[1].set_xlabel('Pixel Index')
+    axes[1].set_ylabel('Normalized Intensity')
+    axes[1].set_title(
+        f'X Lineout (avg {lw_label} px, FWHM={fwhm_x:.1f} px)')
+    axes[1].legend(fontsize=8)
+
+    # --- Panel 3: Y profile (along rows) ---
+    y_pixels = np.arange(len(profile_y))
+    axes[2].plot(y_pixels, profile_y_norm, color='#3498db', linewidth=1.5)
+    axes[2].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
+                    label='Half-max')
+    axes[2].axvline(x=y_peak - fwhm_y / 2, color='green',
+                    linestyle='--', linewidth=1, label='FWHM')
+    axes[2].axvline(x=y_peak + fwhm_y / 2, color='green',
+                    linestyle='--', linewidth=1)
+    axes[2].set_xlim(y_lo, y_hi)
+    axes[2].set_ylim(0, 1.05)
+    axes[2].set_xlabel('Pixel Index')
+    axes[2].set_ylabel('Normalized Intensity')
+    axes[2].set_title(
+        f'Y Lineout (avg {lw_label} px, FWHM={fwhm_y:.1f} px)')
+    axes[2].legend(fontsize=8)
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+    plt.close(fig)
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode('utf-8')
 
 
 def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout_bg=False):
@@ -302,34 +544,7 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     return result
 
 
-def apply_jet_colormap(data):
-    """
-    Apply jet colormap to normalized data.
-    
-    Parameters
-    ----------
-    data : 2D array-like
-        Normalized 2D data (0-1 range)
-        
-    Returns
-    -------
-    list
-        RGB values as a list of lists (height x width x 3)
-    """
-    data = np.asarray(data, dtype=float)
-    
-    # Jet colormap interpolation
-    # Blue -> Cyan -> Green -> Yellow -> Red
-    r = np.clip(1.5 - np.abs(4.0 * data - 3.0), 0, 1)
-    g = np.clip(1.5 - np.abs(4.0 * data - 2.0), 0, 1)
-    b = np.clip(1.5 - np.abs(4.0 * data - 1.0), 0, 1)
-    
-    # Combine into RGB array (0-255)
-    rgb = np.stack([r, g, b], axis=-1) * 255
-    return rgb.astype(np.uint8).tolist()
-
-
-def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None, subtract_lineout_bg=False):
+def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None, subtract_lineout_bg=False, auto_rotate=False):
     """
     Process raw image data and calculate FWHM.
     
@@ -346,17 +561,23 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
     lineout_width : int, optional
         Width of the lineout in pixels (default: 1)
     crop_size : int, optional
-        Size of the cropped focal spot region (default: None, auto-calculated based on FWHM)
+        Unused; kept for backward compatibility.
     subtract_lineout_bg : bool, optional
         If True and no background image is provided, estimate and subtract background 
         from lineout profiles (default: False)
+    auto_rotate : bool, optional
+        If True, automatically rotate the image to align the principal axes of the
+        focal spot with the image X/Y axes before computing FWHM (default: False).
         
     Returns
     -------
     dict
         FWHM results from calculate_fwhm_2d, plus:
-        - 'cropped_jet': Cropped focal spot with jet colormap (RGB list)
-        - 'crop_bounds': Dictionary with x_start, x_end, y_start, y_end
+        - 'visualization_png': base64-encoded PNG of a 3-panel matplotlib figure
+          (focal spot with inferno colormap + normalized colorbar, X lineout,
+          Y lineout), or None if matplotlib is unavailable
+        - 'rotation_angle_deg': rotation angle applied (degrees); 0 when
+          auto_rotate is False
     """
     image = np.asarray(image_data, dtype=float)
     
@@ -410,49 +631,39 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
         # Subtract background and clip to non-negative values
         image = np.clip(image - bg, 0, None)
     
+    # Auto-rotate to align the principal axes with the image X/Y axes
+    rotation_angle_deg = 0.0
+    image_for_display = image
+    if auto_rotate and np.max(image) > 0:
+        theta, cx_rot, cy_rot = compute_orientation_and_centroid(image)
+        rotation_angle_deg = float(np.degrees(theta))
+        print(f"[DEBUG] Auto-rotate: theta={rotation_angle_deg:.2f}°, "
+              f"centroid=({cx_rot:.1f}, {cy_rot:.1f})")
+        image_for_display = rotate_about_center(image, theta, cx_rot, cy_rot)
+    else:
+        image_for_display = image
+
     # Apply lineout background subtraction only if requested AND no background image was provided
     apply_lineout_bg_subtraction = subtract_lineout_bg and (background is None)
     
-    result = calculate_fwhm_2d(image, smooth_sigma, lineout_width, subtract_lineout_bg=apply_lineout_bg_subtraction)
-    
-    # Create cropped focal spot with jet colormap
-    center_x = result['center_x']
-    center_y = result['center_y']
-    fwhm_x = result['fwhm_x']
-    fwhm_y = result['fwhm_y']
-    
-    # Auto-calculate crop size based on FWHM (3x the larger FWHM)
-    if crop_size is None:
-        crop_size = int(max(fwhm_x, fwhm_y) * 3)
-    crop_size = max(crop_size, 10)  # Minimum size
-    
-    height, width = image.shape
-    half_size = crop_size // 2
-    
-    # Calculate crop bounds
-    x_start = max(0, center_x - half_size)
-    x_end = min(width, center_x + half_size)
-    y_start = max(0, center_y - half_size)
-    y_end = min(height, center_y + half_size)
-    
-    # Extract cropped region
-    cropped = image[y_start:y_end, x_start:x_end]
-    
-    # Normalize to 0-1 for colormap
-    if cropped.max() > cropped.min():
-        normalized = (cropped - cropped.min()) / (cropped.max() - cropped.min())
-    else:
-        normalized = np.zeros_like(cropped)
-    
-    # Apply jet colormap
-    cropped_jet = apply_jet_colormap(normalized)
-    
-    result['cropped_jet'] = cropped_jet
-    result['crop_bounds'] = {
-        'x_start': int(x_start),
-        'x_end': int(x_end),
-        'y_start': int(y_start),
-        'y_end': int(y_end)
-    }
+    result = calculate_fwhm_2d(image_for_display, smooth_sigma, lineout_width,
+                                subtract_lineout_bg=apply_lineout_bg_subtraction)
+
+    # Generate matplotlib visualization (inferno colormap + normalized colorbar)
+    lineout_half_width = max(0, (lineout_width - 1) // 2)
+    visualization_png = generate_visualization_png(
+        data_rot=image_for_display,
+        profile_x=result['profile_x'],
+        profile_y=result['profile_y'],
+        fwhm_x=result['fwhm_x'],
+        fwhm_y=result['fwhm_y'],
+        center_x=result['center_x'],
+        center_y=result['center_y'],
+        lineout_width=lineout_half_width,
+        rotation_angle_deg=rotation_angle_deg,
+    )
+
+    result['visualization_png'] = visualization_png
+    result['rotation_angle_deg'] = float(rotation_angle_deg)
     
     return result
