@@ -6,23 +6,24 @@ This module provides functions to calculate the FWHM of a focal spot image.
 
 import numpy as np
 from scipy.ndimage import gaussian_filter, affine_transform, label as ndimage_label
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 def to_python_scalar(value):
     """
     Convert numpy scalar to Python native type for Pyodide compatibility.
-    
+
     Parameters
     ----------
     value : numeric
         Value to convert (can be numpy scalar or Python native)
-        
+
     Returns
     -------
     int or float
         Python native type
     """
-    if hasattr(value, 'item'):
+    if hasattr(value, "item"):
         # It's a numpy scalar, use .item() for proper conversion
         native_val = value.item()
         return type(native_val)(native_val)
@@ -34,71 +35,82 @@ def to_python_scalar(value):
 def calculate_width_at_threshold(profile, threshold_fraction):
     """
     Calculate the width of a 1D intensity profile at a given threshold fraction.
-    
+
     Parameters
     ----------
     profile : array-like
         1D array of intensity values
     threshold_fraction : float
         The fraction of maximum intensity to measure width at (e.g., 0.5 for FWHM)
-        
+
     Returns
     -------
     float
         The width in pixels at the specified threshold
     """
     profile = np.asarray(profile, dtype=float)
-    
-    print(f"[DEBUG] calculate_width_at_threshold: profile length={len(profile)}, threshold_fraction={threshold_fraction}")
-    
+
+    print(
+        f"[DEBUG] calculate_width_at_threshold: profile length={len(profile)}, threshold_fraction={threshold_fraction}"
+    )
+
     # Find the maximum value and its position
     max_val = np.max(profile)
     max_idx = np.argmax(profile)
-    
+
     print(f"[DEBUG] calculate_width_at_threshold: max_val={max_val}, max_idx={max_idx}")
-    
+
     # Validate that we have a meaningful signal
     if max_val <= 0 or np.isnan(max_val) or np.isinf(max_val):
         print(f"[ERROR] Invalid maximum value in profile: max_val={max_val}")
         return 0.0
-    
+
     # Calculate threshold value
     threshold = max_val * threshold_fraction
-    
+
     print(f"[DEBUG] calculate_width_at_threshold: threshold={threshold}")
-    
+
     # Find the indices where the profile crosses threshold
     # Left side
     left_idx = max_idx
     while left_idx > 0 and profile[left_idx] > threshold:
         left_idx -= 1
-    
+
     # Interpolate for more accurate position
     if left_idx > 0 and profile[left_idx] != profile[left_idx + 1]:
-        left_pos = left_idx + (threshold - profile[left_idx]) / (profile[left_idx + 1] - profile[left_idx])
+        left_pos = left_idx + (threshold - profile[left_idx]) / (
+            profile[left_idx + 1] - profile[left_idx]
+        )
     else:
         left_pos = left_idx
-    
+
     # Right side
     right_idx = max_idx
     while right_idx < len(profile) - 1 and profile[right_idx] > threshold:
         right_idx += 1
-    
+
     # Interpolate for more accurate position
     if 0 < right_idx < len(profile) and profile[right_idx] != profile[right_idx - 1]:
-        right_pos = right_idx - 1 + (threshold - profile[right_idx - 1]) / (profile[right_idx] - profile[right_idx - 1])
+        right_pos = (
+            right_idx
+            - 1
+            + (threshold - profile[right_idx - 1])
+            / (profile[right_idx] - profile[right_idx - 1])
+        )
     else:
         right_pos = right_idx
-    
+
     width = right_pos - left_pos
-    
-    print(f"[DEBUG] calculate_width_at_threshold: left_pos={left_pos}, right_pos={right_pos}, width={width}, width_type={type(width)}")
-    
+
+    print(
+        f"[DEBUG] calculate_width_at_threshold: left_pos={left_pos}, right_pos={right_pos}, width={width}, width_type={type(width)}"
+    )
+
     # Validate result
     if np.isnan(width) or np.isinf(width) or width < 0:
         print(f"[ERROR] Invalid width calculated: width={width}")
         return 0.0
-    
+
     # Ensure we return a Python float, not numpy scalar (important for Pyodide)
     return float(width)
 
@@ -106,12 +118,12 @@ def calculate_width_at_threshold(profile, threshold_fraction):
 def calculate_fwhm_1d(profile):
     """
     Calculate the FWHM of a 1D intensity profile.
-    
+
     Parameters
     ----------
     profile : array-like
         1D array of intensity values
-        
+
     Returns
     -------
     float
@@ -123,14 +135,14 @@ def calculate_fwhm_1d(profile):
 def estimate_lineout_background(profile, edge_fraction=0.1):
     """
     Estimate background level from the edges of a lineout profile.
-    
+
     Parameters
     ----------
     profile : array-like
         1D array of intensity values
     edge_fraction : float, optional
         Fraction of profile length to use from each edge (default: 0.1)
-        
+
     Returns
     -------
     float
@@ -139,11 +151,11 @@ def estimate_lineout_background(profile, edge_fraction=0.1):
     profile = np.asarray(profile, dtype=float)
     n = len(profile)
     edge_size = max(1, int(n * edge_fraction))
-    
+
     # Get average of left and right edges
     left_edge = np.mean(profile[:edge_size])
     right_edge = np.mean(profile[-edge_size:])
-    
+
     # Use minimum of the two edges as background estimate
     # This is conservative and avoids overestimating background
     return min(left_edge, right_edge)
@@ -174,19 +186,18 @@ def rotate_about_center(data, theta, cx, cy, order=3):
     data = np.asarray(data, dtype=float)
     c, s = np.cos(theta), np.sin(theta)
     # Forward rotation matrix in (x, y) = (col, row) space
-    R = np.array([[c, -s],
-                  [s,  c]])
+    R = np.array([[c, -s], [s, c]])
     # scipy.ndimage.affine_transform maps output coords -> input coords,
     # so use the inverse (transpose) rotation.
     A = R.T
     center = np.array([cx, cy])
     offset = center - A @ center
     # affine_transform expects matrix in (row, col) = (y, x) order
-    A_rc = np.array([[A[1, 1], A[1, 0]],
-                     [A[0, 1], A[0, 0]]])
+    A_rc = np.array([[A[1, 1], A[1, 0]], [A[0, 1], A[0, 0]]])
     offset_rc = np.array([offset[1], offset[0]])
-    return affine_transform(data, A_rc, offset=offset_rc, order=order,
-                            mode='constant', cval=0.0)
+    return affine_transform(
+        data, A_rc, offset=offset_rc, order=order, mode="constant", cval=0.0
+    )
 
 
 def compute_orientation_and_centroid(image, threshold_fraction=1e-3):
@@ -240,9 +251,9 @@ def compute_orientation_and_centroid(image, threshold_fraction=1e-3):
     # Normalized second central moments
     dx = x_coords - cx
     dy = y_coords - cy
-    mu20_y = float(np.sum(dy ** 2 * weights) / M00)   # variance in row direction
-    mu02_x = float(np.sum(dx ** 2 * weights) / M00)   # variance in col direction
-    mu11   = float(np.sum(dx * dy * weights) / M00)    # cross term
+    mu20_y = float(np.sum(dy**2 * weights) / M00)  # variance in row direction
+    mu02_x = float(np.sum(dx**2 * weights) / M00)  # variance in col direction
+    mu11 = float(np.sum(dx * dy * weights) / M00)  # cross term
 
     # Rotation angle to align the major axis with the image X (column) axis.
     # Derived from the covariance matrix in (col, row) space:
@@ -263,10 +274,18 @@ def compute_orientation_and_centroid(image, threshold_fraction=1e-3):
     return theta, cx, cy
 
 
-def generate_visualization_png(data_rot, profile_x, profile_y,
-                                fwhm_x, fwhm_y, center_x, center_y,
-                                lineout_width=1, rotation_angle_deg=0.0,
-                                pixel_per_micron=0.0):
+def generate_visualization_png(
+    data_rot,
+    profile_x,
+    profile_y,
+    fwhm_x,
+    fwhm_y,
+    center_x,
+    center_y,
+    lineout_width=1,
+    rotation_angle_deg=0.0,
+    pixel_per_micron=0.0,
+):
     """
     Generate a 3-panel matplotlib figure (focal spot + X lineout + Y lineout)
     stacked vertically and return it as a base64-encoded PNG string.
@@ -302,7 +321,8 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
     """
     try:
         import matplotlib
-        matplotlib.use('Agg')
+
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         from matplotlib.ticker import FuncFormatter
         import io
@@ -336,28 +356,40 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
 
     calibrated = pixel_per_micron > 0
 
-    fig, axes = plt.subplots(3, 1, figsize=(7, 16),
-                             gridspec_kw={'height_ratios': [2, 1, 1]})
+    fig, axes = plt.subplots(
+        3, 1, figsize=(7, 16), gridspec_kw={"height_ratios": [2, 1, 1]}
+    )
 
     # --- Panel 1: rotated focal spot image with inferno colormap ---
-    im = axes[0].imshow(data_display, cmap='inferno', vmin=0, vmax=1,
-                        origin='upper', interpolation='nearest')
+    im = axes[0].imshow(
+        data_display,
+        cmap="inferno",
+        vmin=0,
+        vmax=1,
+        origin="upper",
+        interpolation="nearest",
+    )
     axes[0].set_xlim(x_lo, x_hi)
-    axes[0].set_ylim(y_hi, y_lo)   # keep image orientation (row 0 at top)
-    title = (f'Focal Spot (θ={rotation_angle_deg:.1f}°)'
-             if abs(rotation_angle_deg) > 0.5 else 'Focal Spot')
+    axes[0].set_ylim(y_hi, y_lo)  # keep image orientation (row 0 at top)
+    title = (
+        f"Focal Spot (θ={rotation_angle_deg:.1f}°)"
+        if abs(rotation_angle_deg) > 0.5
+        else "Focal Spot"
+    )
     axes[0].set_title(title)
     if calibrated:
-        px_fmt = FuncFormatter(lambda v, _: f'{v / pixel_per_micron:.1f}')
+        px_fmt = FuncFormatter(lambda v, _: f"{v / pixel_per_micron:.1f}")
         axes[0].xaxis.set_major_formatter(px_fmt)
         axes[0].yaxis.set_major_formatter(px_fmt)
-        axes[0].set_xlabel('x (µm)')
-        axes[0].set_ylabel('y (µm)')
+        axes[0].set_xlabel("x (µm)")
+        axes[0].set_ylabel("y (µm)")
     else:
-        axes[0].set_xlabel('Column (px)')
-        axes[0].set_ylabel('Row (px)')
-    cbar = plt.colorbar(im, ax=axes[0])
-    cbar.set_label('Normalized Intensity')
+        axes[0].set_xlabel("Column (px)")
+        axes[0].set_ylabel("Row (px)")
+    divider = make_axes_locatable(axes[0])
+    cax1 = divider.append_axes("right", size="5%", pad=0.05)
+    cbar = plt.colorbar(im, cax=cax1)
+    cbar.set_label("Normalized Intensity")
 
     # --- Panel 2: X profile (along columns) ---
     lw_label = str(lineout_width)
@@ -366,31 +398,43 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
         x_coords = x_pixels / pixel_per_micron
         fwhm_x_um = fwhm_x / pixel_per_micron
         peak_x_um = x_peak / pixel_per_micron
-        axes[1].plot(x_coords, profile_x_norm, color='#3498db', linewidth=1.5)
-        axes[1].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
-                        label='Half-max')
-        axes[1].axvline(x=peak_x_um - fwhm_x_um / 2, color='green',
-                        linestyle='--', linewidth=1, label='FWHM')
-        axes[1].axvline(x=peak_x_um + fwhm_x_um / 2, color='green',
-                        linestyle='--', linewidth=1)
+        axes[1].plot(x_coords, profile_x_norm, color="#3498db", linewidth=1.5)
+        axes[1].axhline(
+            y=0.5, color="red", linestyle="--", linewidth=1, label="Half-max"
+        )
+        axes[1].axvline(
+            x=peak_x_um - fwhm_x_um / 2,
+            color="green",
+            linestyle="--",
+            linewidth=1,
+            label="FWHM",
+        )
+        axes[1].axvline(
+            x=peak_x_um + fwhm_x_um / 2, color="green", linestyle="--", linewidth=1
+        )
         axes[1].set_xlim(x_lo / pixel_per_micron, x_hi / pixel_per_micron)
-        axes[1].set_xlabel('Position (µm)')
-        axes[1].set_title(
-            f'X Lineout (avg {lw_label} px, FWHM={fwhm_x_um:.2f} µm)')
+        axes[1].set_xlabel("Position (µm)")
+        axes[1].set_title(f"X Lineout (avg {lw_label} px, FWHM={fwhm_x_um:.2f} µm)")
     else:
-        axes[1].plot(x_pixels, profile_x_norm, color='#3498db', linewidth=1.5)
-        axes[1].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
-                        label='Half-max')
-        axes[1].axvline(x=x_peak - fwhm_x / 2, color='green',
-                        linestyle='--', linewidth=1, label='FWHM')
-        axes[1].axvline(x=x_peak + fwhm_x / 2, color='green',
-                        linestyle='--', linewidth=1)
+        axes[1].plot(x_pixels, profile_x_norm, color="#3498db", linewidth=1.5)
+        axes[1].axhline(
+            y=0.5, color="red", linestyle="--", linewidth=1, label="Half-max"
+        )
+        axes[1].axvline(
+            x=x_peak - fwhm_x / 2,
+            color="green",
+            linestyle="--",
+            linewidth=1,
+            label="FWHM",
+        )
+        axes[1].axvline(
+            x=x_peak + fwhm_x / 2, color="green", linestyle="--", linewidth=1
+        )
         axes[1].set_xlim(x_lo, x_hi)
-        axes[1].set_xlabel('Position (px)')
-        axes[1].set_title(
-            f'X Lineout (avg {lw_label} px, FWHM={fwhm_x:.1f} px)')
+        axes[1].set_xlabel("Position (px)")
+        axes[1].set_title(f"X Lineout (avg {lw_label} px, FWHM={fwhm_x:.1f} px)")
     axes[1].set_ylim(0, 1.05)
-    axes[1].set_ylabel('Normalized Intensity')
+    axes[1].set_ylabel("Normalized Intensity")
     axes[1].legend(fontsize=8)
 
     # --- Panel 3: Y profile (along rows) ---
@@ -399,45 +443,59 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
         y_coords = y_pixels / pixel_per_micron
         fwhm_y_um = fwhm_y / pixel_per_micron
         peak_y_um = y_peak / pixel_per_micron
-        axes[2].plot(y_coords, profile_y_norm, color='#3498db', linewidth=1.5)
-        axes[2].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
-                        label='Half-max')
-        axes[2].axvline(x=peak_y_um - fwhm_y_um / 2, color='green',
-                        linestyle='--', linewidth=1, label='FWHM')
-        axes[2].axvline(x=peak_y_um + fwhm_y_um / 2, color='green',
-                        linestyle='--', linewidth=1)
+        axes[2].plot(y_coords, profile_y_norm, color="#3498db", linewidth=1.5)
+        axes[2].axhline(
+            y=0.5, color="red", linestyle="--", linewidth=1, label="Half-max"
+        )
+        axes[2].axvline(
+            x=peak_y_um - fwhm_y_um / 2,
+            color="green",
+            linestyle="--",
+            linewidth=1,
+            label="FWHM",
+        )
+        axes[2].axvline(
+            x=peak_y_um + fwhm_y_um / 2, color="green", linestyle="--", linewidth=1
+        )
         axes[2].set_xlim(y_lo / pixel_per_micron, y_hi / pixel_per_micron)
-        axes[2].set_xlabel('Position (µm)')
-        axes[2].set_title(
-            f'Y Lineout (avg {lw_label} px, FWHM={fwhm_y_um:.2f} µm)')
+        axes[2].set_xlabel("Position (µm)")
+        axes[2].set_title(f"Y Lineout (avg {lw_label} px, FWHM={fwhm_y_um:.2f} µm)")
     else:
-        axes[2].plot(y_pixels, profile_y_norm, color='#3498db', linewidth=1.5)
-        axes[2].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
-                        label='Half-max')
-        axes[2].axvline(x=y_peak - fwhm_y / 2, color='green',
-                        linestyle='--', linewidth=1, label='FWHM')
-        axes[2].axvline(x=y_peak + fwhm_y / 2, color='green',
-                        linestyle='--', linewidth=1)
+        axes[2].plot(y_pixels, profile_y_norm, color="#3498db", linewidth=1.5)
+        axes[2].axhline(
+            y=0.5, color="red", linestyle="--", linewidth=1, label="Half-max"
+        )
+        axes[2].axvline(
+            x=y_peak - fwhm_y / 2,
+            color="green",
+            linestyle="--",
+            linewidth=1,
+            label="FWHM",
+        )
+        axes[2].axvline(
+            x=y_peak + fwhm_y / 2, color="green", linestyle="--", linewidth=1
+        )
         axes[2].set_xlim(y_lo, y_hi)
-        axes[2].set_xlabel('Position (px)')
-        axes[2].set_title(
-            f'Y Lineout (avg {lw_label} px, FWHM={fwhm_y:.1f} px)')
+        axes[2].set_xlabel("Position (px)")
+        axes[2].set_title(f"Y Lineout (avg {lw_label} px, FWHM={fwhm_y:.1f} px)")
     axes[2].set_ylim(0, 1.05)
-    axes[2].set_ylabel('Normalized Intensity')
+    axes[2].set_ylabel("Normalized Intensity")
     axes[2].legend(fontsize=8)
 
     plt.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+    plt.savefig(buf, format="png", bbox_inches="tight", dpi=150)
     plt.close(fig)
     buf.seek(0)
-    return base64.b64encode(buf.read()).decode('utf-8')
+    return base64.b64encode(buf.read()).decode("utf-8")
 
 
-def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout_bg=False):
+def calculate_fwhm_2d(
+    image, smooth_sigma=1.0, lineout_width=1, subtract_lineout_bg=False
+):
     """
     Calculate the FWHM of a 2D focal spot image in both X and Y directions.
-    
+
     Parameters
     ----------
     image : 2D array-like
@@ -449,7 +507,7 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
         the profile is averaged over multiple adjacent rows/columns.
     subtract_lineout_bg : bool, optional
         If True, estimate and subtract background from lineout profiles (default: False)
-        
+
     Returns
     -------
     dict
@@ -463,31 +521,31 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     """
     image = np.asarray(image, dtype=float)
     lineout_width = max(1, int(lineout_width))
-    
+
     # Apply Gaussian smoothing to reduce noise
     if smooth_sigma > 0:
         smoothed = gaussian_filter(image, sigma=smooth_sigma)
     else:
         smoothed = image
-    
+
     # Find the peak position
     max_idx = np.unravel_index(np.argmax(smoothed), smoothed.shape)
     center_y, center_x = max_idx
-    
+
     # Extract 1D profiles through the peak with lineout width
     half_width = lineout_width // 2
     height, width = smoothed.shape
-    
+
     # X profile: average over exactly lineout_width rows centered at center_y
     y_start = max(0, center_y - half_width)
     y_end = min(height, y_start + lineout_width)
     profile_x = np.mean(smoothed[y_start:y_end, :], axis=0)
-    
+
     # Y profile: average over exactly lineout_width columns centered at center_x
     x_start = max(0, center_x - half_width)
     x_end = min(width, x_start + lineout_width)
     profile_y = np.mean(smoothed[:, x_start:x_end], axis=1)
-    
+
     # Subtract lineout background if requested
     bg_x = None
     bg_y = None
@@ -497,100 +555,117 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
         print(f"[DEBUG] Background estimation: bg_x={bg_x}, bg_y={bg_y}")
         profile_x = np.clip(profile_x - bg_x, 0, None)
         profile_y = np.clip(profile_y - bg_y, 0, None)
-    
-    print(f"[DEBUG] Profile X stats: min={np.min(profile_x)}, max={np.max(profile_x)}, mean={np.mean(profile_x)}")
-    print(f"[DEBUG] Profile Y stats: min={np.min(profile_y)}, max={np.max(profile_y)}, mean={np.mean(profile_y)}")
-    
+
+    print(
+        f"[DEBUG] Profile X stats: min={np.min(profile_x)}, max={np.max(profile_x)}, mean={np.mean(profile_x)}"
+    )
+    print(
+        f"[DEBUG] Profile Y stats: min={np.min(profile_y)}, max={np.max(profile_y)}, mean={np.mean(profile_y)}"
+    )
+
     # Calculate FWHM for each direction
     print("[DEBUG] Calculating FWHM X...")
     fwhm_x = calculate_fwhm_1d(profile_x)
     print(f"[DEBUG] FWHM X calculated: {fwhm_x}")
-    
+
     print("[DEBUG] Calculating FWHM Y...")
     fwhm_y = calculate_fwhm_1d(profile_y)
     print(f"[DEBUG] FWHM Y calculated: {fwhm_y}")
-    
+
     # Calculate 1/e^2 radius - a standard laser beam measurement.
     # The 1/e^2 radius is where the intensity drops to 1/e^2 ≈ 13.5% of peak.
     # For a Gaussian beam exp(-2r²/w²), this occurs at r = w (the beam radius).
-    e2_threshold = 1.0 / (np.e ** 2)  # ≈ 0.1353
+    e2_threshold = 1.0 / (np.e**2)  # ≈ 0.1353
     print(f"[DEBUG] Calculating 1/e² widths with threshold={e2_threshold}...")
     width_e2_x = calculate_width_at_threshold(profile_x, e2_threshold)
     width_e2_y = calculate_width_at_threshold(profile_y, e2_threshold)
     radius_e2_x = width_e2_x / 2.0
     radius_e2_y = width_e2_y / 2.0
     print(f"[DEBUG] 1/e² radius X: {radius_e2_x}, Y: {radius_e2_y}")
-    
+
     # Validate all calculated values before creating result
     print("[DEBUG] Validating calculated values...")
     print(f"[DEBUG] fwhm_x type: {type(fwhm_x)}, value: {fwhm_x}")
     print(f"[DEBUG] fwhm_y type: {type(fwhm_y)}, value: {fwhm_y}")
     print(f"[DEBUG] radius_e2_x type: {type(radius_e2_x)}, value: {radius_e2_x}")
     print(f"[DEBUG] radius_e2_y type: {type(radius_e2_y)}, value: {radius_e2_y}")
-    
+
     # Check for NaN or Inf values
     values_to_check = {
-        'fwhm_x': fwhm_x,
-        'fwhm_y': fwhm_y,
-        'radius_e2_x': radius_e2_x,
-        'radius_e2_y': radius_e2_y
+        "fwhm_x": fwhm_x,
+        "fwhm_y": fwhm_y,
+        "radius_e2_x": radius_e2_x,
+        "radius_e2_y": radius_e2_y,
     }
-    
+
     for name, value in values_to_check.items():
         if np.isnan(value) or np.isinf(value):
             print(f"[ERROR] Invalid value detected: {name}={value}")
             # Set to 0 as a safe fallback
             values_to_check[name] = 0.0
             print(f"[WARNING] Setting {name} to 0.0 as fallback")
-    
+
     # Explicitly convert to Python native types (important for Pyodide)
     try:
-        fwhm_x_val = float(to_python_scalar(values_to_check['fwhm_x']))
-        fwhm_y_val = float(to_python_scalar(values_to_check['fwhm_y']))
-        radius_e2_x_val = float(to_python_scalar(values_to_check['radius_e2_x']))
-        radius_e2_y_val = float(to_python_scalar(values_to_check['radius_e2_y']))
+        fwhm_x_val = float(to_python_scalar(values_to_check["fwhm_x"]))
+        fwhm_y_val = float(to_python_scalar(values_to_check["fwhm_y"]))
+        radius_e2_x_val = float(to_python_scalar(values_to_check["radius_e2_x"]))
+        radius_e2_y_val = float(to_python_scalar(values_to_check["radius_e2_y"]))
         center_x_val = int(to_python_scalar(center_x))
         center_y_val = int(to_python_scalar(center_y))
     except Exception as e:
         print(f"[ERROR] Type conversion error: {e}")
         # Fallback to basic conversion
-        fwhm_x_val = float(values_to_check['fwhm_x'])
-        fwhm_y_val = float(values_to_check['fwhm_y'])
-        radius_e2_x_val = float(values_to_check['radius_e2_x'])
-        radius_e2_y_val = float(values_to_check['radius_e2_y'])
+        fwhm_x_val = float(values_to_check["fwhm_x"])
+        fwhm_y_val = float(values_to_check["fwhm_y"])
+        radius_e2_x_val = float(values_to_check["radius_e2_x"])
+        radius_e2_y_val = float(values_to_check["radius_e2_y"])
         center_x_val = int(center_x)
         center_y_val = int(center_y)
-    
+
     print(f"[DEBUG] Converted values - fwhm_x: {fwhm_x_val} (type: {type(fwhm_x_val)})")
     print(f"[DEBUG] Converted values - fwhm_y: {fwhm_y_val} (type: {type(fwhm_y_val)})")
-    
+
     result = {
-        'fwhm_x': fwhm_x_val,
-        'fwhm_y': fwhm_y_val,
-        'radius_e2_x': radius_e2_x_val,
-        'radius_e2_y': radius_e2_y_val,
-        'center_x': center_x_val,
-        'center_y': center_y_val,
-        'profile_x': profile_x.tolist(),
-        'profile_y': profile_y.tolist()
+        "fwhm_x": fwhm_x_val,
+        "fwhm_y": fwhm_y_val,
+        "radius_e2_x": radius_e2_x_val,
+        "radius_e2_y": radius_e2_y_val,
+        "center_x": center_x_val,
+        "center_y": center_y_val,
+        "profile_x": profile_x.tolist(),
+        "profile_y": profile_y.tolist(),
     }
-    
+
     print(f"[DEBUG] Result dictionary created with keys: {list(result.keys())}")
-    print(f"[DEBUG] FWHM values in result: fwhm_x={result['fwhm_x']}, fwhm_y={result['fwhm_y']}")
-    print(f"[DEBUG] Result value types: fwhm_x={type(result['fwhm_x'])}, fwhm_y={type(result['fwhm_y'])}")
-    
+    print(
+        f"[DEBUG] FWHM values in result: fwhm_x={result['fwhm_x']}, fwhm_y={result['fwhm_y']}"
+    )
+    print(
+        f"[DEBUG] Result value types: fwhm_x={type(result['fwhm_x'])}, fwhm_y={type(result['fwhm_y'])}"
+    )
+
     # Include background values if subtraction was performed
     if bg_x is not None:
-        result['bg_x'] = float(to_python_scalar(bg_x))
-        result['bg_y'] = float(to_python_scalar(bg_y))
-    
+        result["bg_x"] = float(to_python_scalar(bg_x))
+        result["bg_y"] = float(to_python_scalar(bg_y))
+
     return result
 
 
-def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None, subtract_lineout_bg=False, auto_rotate=False, pixel_per_micron=0.0):
+def process_image_data(
+    image_data,
+    smooth_sigma=1.0,
+    background=None,
+    lineout_width=1,
+    crop_size=None,
+    subtract_lineout_bg=False,
+    auto_rotate=False,
+    pixel_per_micron=0.0,
+):
     """
     Process raw image data and calculate FWHM.
-    
+
     Parameters
     ----------
     image_data : 2D or 3D array-like
@@ -606,7 +681,7 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
     crop_size : int, optional
         Unused; kept for backward compatibility.
     subtract_lineout_bg : bool, optional
-        If True and no background image is provided, estimate and subtract background 
+        If True and no background image is provided, estimate and subtract background
         from lineout profiles (default: False)
     auto_rotate : bool, optional
         If True, automatically rotate the image to align the principal axes of the
@@ -614,7 +689,7 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
     pixel_per_micron : float, optional
         Calibration factor in pixels per micron. When > 0, visualization axes are
         shown in microns (default: 0.0).
-        
+
     Returns
     -------
     dict
@@ -626,23 +701,27 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
           auto_rotate is False
     """
     image = np.asarray(image_data, dtype=float)
-    
+
     # Convert RGB/RGBA to grayscale if necessary
     if len(image.shape) == 3:
         if image.shape[2] == 4:
             # RGBA - use only RGB channels
-            image = 0.299 * image[:, :, 0] + 0.587 * image[:, :, 1] + 0.114 * image[:, :, 2]
+            image = (
+                0.299 * image[:, :, 0] + 0.587 * image[:, :, 1] + 0.114 * image[:, :, 2]
+            )
         elif image.shape[2] == 3:
             # RGB
-            image = 0.299 * image[:, :, 0] + 0.587 * image[:, :, 1] + 0.114 * image[:, :, 2]
+            image = (
+                0.299 * image[:, :, 0] + 0.587 * image[:, :, 1] + 0.114 * image[:, :, 2]
+            )
         else:
             # Assume single channel
             image = image[:, :, 0]
-    
+
     # Process background if provided
     if background is not None:
         bg = np.asarray(background, dtype=float)
-        
+
         # Convert background to grayscale if necessary
         if len(bg.shape) == 3:
             if bg.shape[2] == 4:
@@ -651,13 +730,13 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
                 bg = 0.299 * bg[:, :, 0] + 0.587 * bg[:, :, 1] + 0.114 * bg[:, :, 2]
             else:
                 bg = bg[:, :, 0]
-        
+
         # Center-align and resize background if dimensions don't match
         if bg.shape != image.shape:
             bg_resized = np.zeros_like(image)
             img_h, img_w = image.shape
             bg_h, bg_w = bg.shape
-            
+
             # Calculate center-aligned offsets
             # For source (background): where to start reading
             src_y = max(0, (bg_h - img_h) // 2)
@@ -665,51 +744,58 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
             # For destination (resized): where to start writing
             dst_y = max(0, (img_h - bg_h) // 2)
             dst_x = max(0, (img_w - bg_w) // 2)
-            
+
             # Calculate the overlap region size
             copy_h = min(img_h - dst_y, bg_h - src_y)
             copy_w = min(img_w - dst_x, bg_w - src_x)
-            
-            bg_resized[dst_y:dst_y + copy_h, dst_x:dst_x + copy_w] = \
-                bg[src_y:src_y + copy_h, src_x:src_x + copy_w]
+
+            bg_resized[dst_y : dst_y + copy_h, dst_x : dst_x + copy_w] = bg[
+                src_y : src_y + copy_h, src_x : src_x + copy_w
+            ]
             bg = bg_resized
-        
+
         # Subtract background and clip to non-negative values
         image = np.clip(image - bg, 0, None)
-    
+
     # Auto-rotate to align the principal axes with the image X/Y axes
     rotation_angle_deg = 0.0
     image_for_display = image
     if auto_rotate and np.max(image) > 0:
         theta, cx_rot, cy_rot = compute_orientation_and_centroid(image)
         rotation_angle_deg = float(np.degrees(theta))
-        print(f"[DEBUG] Auto-rotate: theta={rotation_angle_deg:.2f}°, "
-              f"centroid=({cx_rot:.1f}, {cy_rot:.1f})")
+        print(
+            f"[DEBUG] Auto-rotate: theta={rotation_angle_deg:.2f}°, "
+            f"centroid=({cx_rot:.1f}, {cy_rot:.1f})"
+        )
         image_for_display = rotate_about_center(image, theta, cx_rot, cy_rot)
     else:
         image_for_display = image
 
     # Apply lineout background subtraction only if requested AND no background image was provided
     apply_lineout_bg_subtraction = subtract_lineout_bg and (background is None)
-    
-    result = calculate_fwhm_2d(image_for_display, smooth_sigma, lineout_width,
-                                subtract_lineout_bg=apply_lineout_bg_subtraction)
+
+    result = calculate_fwhm_2d(
+        image_for_display,
+        smooth_sigma,
+        lineout_width,
+        subtract_lineout_bg=apply_lineout_bg_subtraction,
+    )
 
     # Generate matplotlib visualization (inferno colormap + normalized colorbar)
     visualization_png = generate_visualization_png(
         data_rot=image_for_display,
-        profile_x=result['profile_x'],
-        profile_y=result['profile_y'],
-        fwhm_x=result['fwhm_x'],
-        fwhm_y=result['fwhm_y'],
-        center_x=result['center_x'],
-        center_y=result['center_y'],
+        profile_x=result["profile_x"],
+        profile_y=result["profile_y"],
+        fwhm_x=result["fwhm_x"],
+        fwhm_y=result["fwhm_y"],
+        center_x=result["center_x"],
+        center_y=result["center_y"],
         lineout_width=lineout_width,
         rotation_angle_deg=rotation_angle_deg,
         pixel_per_micron=pixel_per_micron,
     )
 
-    result['visualization_png'] = visualization_png
-    result['rotation_angle_deg'] = float(rotation_angle_deg)
-    
+    result["visualization_png"] = visualization_png
+    result["rotation_angle_deg"] = float(rotation_angle_deg)
+
     return result
