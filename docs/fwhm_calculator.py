@@ -253,7 +253,7 @@ def compute_orientation_and_centroid(image, threshold_fraction=1e-3):
     #
     # When |mu11| is negligible (axis-aligned spot), handle explicitly to
     # avoid the sign of floating-point zero flipping the arctan2 quadrant.
-    if abs(mu11) < 1e-10 * (mu02_x + mu20_y):
+    if abs(mu11) < 1e-10 * max(mu02_x, mu20_y, 1.0):
         # No cross-term: spot is already axis-aligned.
         # If wider in x (cols): no rotation needed.
         # If wider in y (rows): rotate 90° to align major axis with x.
@@ -334,8 +334,8 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
     # --- Panel 1: rotated focal spot image with inferno colormap ---
     im = axes[0].imshow(data_display, cmap='inferno', vmin=0, vmax=1,
                         origin='upper', interpolation='nearest')
-    axes[0].set_xlim(y_lo, y_hi)
-    axes[0].set_ylim(x_hi, x_lo)   # inverted: row 0 at top
+    axes[0].set_xlim(x_lo, x_hi)   # column limits (horizontal)
+    axes[0].set_ylim(y_lo, y_hi)   # row limits (vertical)
     axes[0].axhline(y=center_y, color='cyan', linewidth=1,
                     alpha=0.8, linestyle='--')
     axes[0].axvline(x=center_x, color='cyan', linewidth=1,

@@ -22,7 +22,7 @@ from fwhm_calculator import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_tilted_gaussian(shape=(120, 120), center=(60, 60),
+def create_tilted_gaussian(shape=(120, 120), center=(60, 60),
                           sigma_major=18.0, sigma_minor=10.0,
                           angle_deg=30.0):
     """Return a 2D Gaussian tilted by *angle_deg* degrees from the x-axis."""
@@ -147,7 +147,7 @@ def test_auto_rotate_aligns_axes():
     expected_fwhm_minor = 2.355 * sigma_minor    # ≈ 18.8 px
 
     # Create an elliptical Gaussian tilted 30° from horizontal
-    data = make_tilted_gaussian(shape=(150, 150), center=(75, 75),
+    data = create_tilted_gaussian(shape=(150, 150), center=(75, 75),
                                 sigma_major=sigma_major, sigma_minor=sigma_minor,
                                 angle_deg=30.0)
 
@@ -188,7 +188,7 @@ def test_no_auto_rotate_unchanged():
 
 def test_rotation_angle_returned():
     """rotation_angle_deg is present and nonzero for a tilted Gaussian."""
-    data = make_tilted_gaussian(shape=(120, 120), center=(60, 60),
+    data = create_tilted_gaussian(shape=(120, 120), center=(60, 60),
                                 sigma_major=18.0, sigma_minor=8.0,
                                 angle_deg=45.0)
     result = process_image_data(data, smooth_sigma=0, auto_rotate=True)
