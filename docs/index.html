@@ -369,13 +369,6 @@
                 
                 <div class="checkbox-group" style="margin-top: 10px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
-                        <input type="checkbox" id="showVerticalLineout">
-                        Show vertical lineout on cropped image
-                    </label>
-                </div>
-                
-                <div class="checkbox-group" style="margin-top: 10px;">
-                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
                         <input type="checkbox" id="subtractLineoutBackground">
                         Calculate background from lineout (only if no background image uploaded)
                     </label>
@@ -1289,6 +1282,7 @@
                 pyodide.globals.set('img_bytes', imageBytes);
                 pyodide.globals.set('smooth_sigma', smoothSigma);
                 pyodide.globals.set('lineout_width', lineoutWidth);
+                pyodide.globals.set('pixel_per_micron', pixelPerMicron);
                 pyodide.globals.set('subtract_lineout_bg', subtractLineoutBackground);
                 pyodide.globals.set('auto_rotate', autoRotate);
                 
@@ -1329,7 +1323,7 @@ else:
 
 # Process and calculate FWHM and return result
 print("Processing image data...")
-result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg, auto_rotate=auto_rotate)
+result = process_image_data(data, smooth_sigma, background=bg, lineout_width=lineout_width, subtract_lineout_bg=subtract_lineout_bg, auto_rotate=auto_rotate, pixel_per_micron=pixel_per_micron)
 print(f"Result type: {type(result)}")
 print(f"Result keys: {list(result.keys())}")
 print(f"FWHM X: {result['fwhm_x']}, FWHM Y: {result['fwhm_y']}")

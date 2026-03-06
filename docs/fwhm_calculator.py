@@ -265,10 +265,11 @@ def compute_orientation_and_centroid(image, threshold_fraction=1e-3):
 
 def generate_visualization_png(data_rot, profile_x, profile_y,
                                 fwhm_x, fwhm_y, center_x, center_y,
-                                lineout_width=0, rotation_angle_deg=0.0):
+                                lineout_width=1, rotation_angle_deg=0.0,
+                                pixel_per_micron=0.0):
     """
     Generate a 3-panel matplotlib figure (focal spot + X lineout + Y lineout)
-    and return it as a base64-encoded PNG string.
+    stacked vertically and return it as a base64-encoded PNG string.
 
     Parameters
     ----------
@@ -287,9 +288,12 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
     center_y : float
         Row index of the peak
     lineout_width : int, optional
-        Half-width of the averaging region used for lineouts (default: 0)
+        Full width (in pixels) of the averaging region used for lineouts (default: 1)
     rotation_angle_deg : float, optional
         Rotation angle in degrees applied to align principal axes (default: 0.0)
+    pixel_per_micron : float, optional
+        Calibration factor in pixels per micron. When > 0, axis labels are shown
+        in microns instead of pixels (default: 0.0)
 
     Returns
     -------
@@ -300,6 +304,7 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
+        from matplotlib.ticker import FuncFormatter
         import io
         import base64
     except ImportError:
@@ -318,7 +323,7 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
     x_peak = int(np.argmax(profile_x_norm))
     y_peak = int(np.argmax(profile_y_norm))
 
-    # Crop limits for the lineout plots
+    # Crop limits for the lineout plots (in pixels)
     x_lo = max(0.0, x_peak - fwhm_mult * fwhm_x)
     x_hi = min(float(len(profile_x) - 1), x_peak + fwhm_mult * fwhm_x)
     y_lo = max(0.0, y_peak - fwhm_mult * fwhm_y)
@@ -329,63 +334,101 @@ def generate_visualization_png(data_rot, profile_x, profile_y,
     data_max = np.max(data_rot)
     data_display = data_rot / data_max if data_max > 0 else data_rot
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+    calibrated = pixel_per_micron > 0
+
+    fig, axes = plt.subplots(3, 1, figsize=(7, 16),
+                             gridspec_kw={'height_ratios': [2, 1, 1]})
 
     # --- Panel 1: rotated focal spot image with inferno colormap ---
     im = axes[0].imshow(data_display, cmap='inferno', vmin=0, vmax=1,
                         origin='upper', interpolation='nearest')
-    axes[0].set_xlim(x_lo, x_hi)   # column limits (horizontal)
-    axes[0].set_ylim(y_lo, y_hi)   # row limits (vertical)
-    axes[0].axhline(y=center_y, color='cyan', linewidth=1,
-                    alpha=0.8, linestyle='--')
-    axes[0].axvline(x=center_x, color='cyan', linewidth=1,
-                    alpha=0.8, linestyle='--')
+    axes[0].set_xlim(x_lo, x_hi)
+    axes[0].set_ylim(y_hi, y_lo)   # keep image orientation (row 0 at top)
     title = (f'Focal Spot (θ={rotation_angle_deg:.1f}°)'
              if abs(rotation_angle_deg) > 0.5 else 'Focal Spot')
     axes[0].set_title(title)
-    axes[0].set_xlabel('Column (px)')
-    axes[0].set_ylabel('Row (px)')
+    if calibrated:
+        px_fmt = FuncFormatter(lambda v, _: f'{v / pixel_per_micron:.1f}')
+        axes[0].xaxis.set_major_formatter(px_fmt)
+        axes[0].yaxis.set_major_formatter(px_fmt)
+        axes[0].set_xlabel('x (µm)')
+        axes[0].set_ylabel('y (µm)')
+    else:
+        axes[0].set_xlabel('Column (px)')
+        axes[0].set_ylabel('Row (px)')
     cbar = plt.colorbar(im, ax=axes[0])
     cbar.set_label('Normalized Intensity')
 
     # --- Panel 2: X profile (along columns) ---
-    lw_label = f'{2 * lineout_width + 1}' if lineout_width > 0 else '1'
+    lw_label = str(lineout_width)
     x_pixels = np.arange(len(profile_x))
-    axes[1].plot(x_pixels, profile_x_norm, color='#3498db', linewidth=1.5)
-    axes[1].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
-                    label='Half-max')
-    axes[1].axvline(x=x_peak - fwhm_x / 2, color='green',
-                    linestyle='--', linewidth=1, label='FWHM')
-    axes[1].axvline(x=x_peak + fwhm_x / 2, color='green',
-                    linestyle='--', linewidth=1)
-    axes[1].set_xlim(x_lo, x_hi)
+    if calibrated:
+        x_coords = x_pixels / pixel_per_micron
+        fwhm_x_um = fwhm_x / pixel_per_micron
+        peak_x_um = x_peak / pixel_per_micron
+        axes[1].plot(x_coords, profile_x_norm, color='#3498db', linewidth=1.5)
+        axes[1].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
+                        label='Half-max')
+        axes[1].axvline(x=peak_x_um - fwhm_x_um / 2, color='green',
+                        linestyle='--', linewidth=1, label='FWHM')
+        axes[1].axvline(x=peak_x_um + fwhm_x_um / 2, color='green',
+                        linestyle='--', linewidth=1)
+        axes[1].set_xlim(x_lo / pixel_per_micron, x_hi / pixel_per_micron)
+        axes[1].set_xlabel('Position (µm)')
+        axes[1].set_title(
+            f'X Lineout (avg {lw_label} px, FWHM={fwhm_x_um:.2f} µm)')
+    else:
+        axes[1].plot(x_pixels, profile_x_norm, color='#3498db', linewidth=1.5)
+        axes[1].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
+                        label='Half-max')
+        axes[1].axvline(x=x_peak - fwhm_x / 2, color='green',
+                        linestyle='--', linewidth=1, label='FWHM')
+        axes[1].axvline(x=x_peak + fwhm_x / 2, color='green',
+                        linestyle='--', linewidth=1)
+        axes[1].set_xlim(x_lo, x_hi)
+        axes[1].set_xlabel('Position (px)')
+        axes[1].set_title(
+            f'X Lineout (avg {lw_label} px, FWHM={fwhm_x:.1f} px)')
     axes[1].set_ylim(0, 1.05)
-    axes[1].set_xlabel('Pixel Index')
     axes[1].set_ylabel('Normalized Intensity')
-    axes[1].set_title(
-        f'X Lineout (avg {lw_label} px, FWHM={fwhm_x:.1f} px)')
     axes[1].legend(fontsize=8)
 
     # --- Panel 3: Y profile (along rows) ---
     y_pixels = np.arange(len(profile_y))
-    axes[2].plot(y_pixels, profile_y_norm, color='#3498db', linewidth=1.5)
-    axes[2].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
-                    label='Half-max')
-    axes[2].axvline(x=y_peak - fwhm_y / 2, color='green',
-                    linestyle='--', linewidth=1, label='FWHM')
-    axes[2].axvline(x=y_peak + fwhm_y / 2, color='green',
-                    linestyle='--', linewidth=1)
-    axes[2].set_xlim(y_lo, y_hi)
+    if calibrated:
+        y_coords = y_pixels / pixel_per_micron
+        fwhm_y_um = fwhm_y / pixel_per_micron
+        peak_y_um = y_peak / pixel_per_micron
+        axes[2].plot(y_coords, profile_y_norm, color='#3498db', linewidth=1.5)
+        axes[2].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
+                        label='Half-max')
+        axes[2].axvline(x=peak_y_um - fwhm_y_um / 2, color='green',
+                        linestyle='--', linewidth=1, label='FWHM')
+        axes[2].axvline(x=peak_y_um + fwhm_y_um / 2, color='green',
+                        linestyle='--', linewidth=1)
+        axes[2].set_xlim(y_lo / pixel_per_micron, y_hi / pixel_per_micron)
+        axes[2].set_xlabel('Position (µm)')
+        axes[2].set_title(
+            f'Y Lineout (avg {lw_label} px, FWHM={fwhm_y_um:.2f} µm)')
+    else:
+        axes[2].plot(y_pixels, profile_y_norm, color='#3498db', linewidth=1.5)
+        axes[2].axhline(y=0.5, color='red', linestyle='--', linewidth=1,
+                        label='Half-max')
+        axes[2].axvline(x=y_peak - fwhm_y / 2, color='green',
+                        linestyle='--', linewidth=1, label='FWHM')
+        axes[2].axvline(x=y_peak + fwhm_y / 2, color='green',
+                        linestyle='--', linewidth=1)
+        axes[2].set_xlim(y_lo, y_hi)
+        axes[2].set_xlabel('Position (px)')
+        axes[2].set_title(
+            f'Y Lineout (avg {lw_label} px, FWHM={fwhm_y:.1f} px)')
     axes[2].set_ylim(0, 1.05)
-    axes[2].set_xlabel('Pixel Index')
     axes[2].set_ylabel('Normalized Intensity')
-    axes[2].set_title(
-        f'Y Lineout (avg {lw_label} px, FWHM={fwhm_y:.1f} px)')
     axes[2].legend(fontsize=8)
 
     plt.tight_layout()
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+    plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
     plt.close(fig)
     buf.seek(0)
     return base64.b64encode(buf.read()).decode('utf-8')
@@ -435,14 +478,14 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     half_width = lineout_width // 2
     height, width = smoothed.shape
     
-    # X profile: average over lineout_width rows centered at center_y
+    # X profile: average over exactly lineout_width rows centered at center_y
     y_start = max(0, center_y - half_width)
-    y_end = min(height, center_y + half_width + 1)
+    y_end = min(height, y_start + lineout_width)
     profile_x = np.mean(smoothed[y_start:y_end, :], axis=0)
     
-    # Y profile: average over lineout_width columns centered at center_x
+    # Y profile: average over exactly lineout_width columns centered at center_x
     x_start = max(0, center_x - half_width)
-    x_end = min(width, center_x + half_width + 1)
+    x_end = min(width, x_start + lineout_width)
     profile_y = np.mean(smoothed[:, x_start:x_end], axis=1)
     
     # Subtract lineout background if requested
@@ -544,7 +587,7 @@ def calculate_fwhm_2d(image, smooth_sigma=1.0, lineout_width=1, subtract_lineout
     return result
 
 
-def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None, subtract_lineout_bg=False, auto_rotate=False):
+def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_width=1, crop_size=None, subtract_lineout_bg=False, auto_rotate=False, pixel_per_micron=0.0):
     """
     Process raw image data and calculate FWHM.
     
@@ -568,6 +611,9 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
     auto_rotate : bool, optional
         If True, automatically rotate the image to align the principal axes of the
         focal spot with the image X/Y axes before computing FWHM (default: False).
+    pixel_per_micron : float, optional
+        Calibration factor in pixels per micron. When > 0, visualization axes are
+        shown in microns (default: 0.0).
         
     Returns
     -------
@@ -650,7 +696,6 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
                                 subtract_lineout_bg=apply_lineout_bg_subtraction)
 
     # Generate matplotlib visualization (inferno colormap + normalized colorbar)
-    lineout_half_width = max(0, (lineout_width - 1) // 2)
     visualization_png = generate_visualization_png(
         data_rot=image_for_display,
         profile_x=result['profile_x'],
@@ -659,8 +704,9 @@ def process_image_data(image_data, smooth_sigma=1.0, background=None, lineout_wi
         fwhm_y=result['fwhm_y'],
         center_x=result['center_x'],
         center_y=result['center_y'],
-        lineout_width=lineout_half_width,
+        lineout_width=lineout_width,
         rotation_angle_deg=rotation_angle_deg,
+        pixel_per_micron=pixel_per_micron,
     )
 
     result['visualization_png'] = visualization_png
